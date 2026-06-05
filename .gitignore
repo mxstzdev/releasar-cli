@@ -1,0 +1,32 @@
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*.bak
+*.orig
+
+# Go toolchain
+*.test
+*.out
+coverage.html
+coverage.txt
+
+# Secrets / local overrides
+*.env
+.env*
+releasar.local.json
+
+# Log output
+*.log
+storage/
+
+# Build output
+releasar
+releasar-cli
+dist/
