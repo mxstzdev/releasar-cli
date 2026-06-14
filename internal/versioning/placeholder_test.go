@@ -101,6 +101,17 @@ func TestReplaceInFile(t *testing.T) {
 		assert.Equal(t, "v=2.0.0, next=2.1.0", string(data))
 	})
 
+	t.Run("preserves original file permissions", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "version.sh")
+		require.NoError(t, os.WriteFile(path, []byte("VERSION={{LATEST}}"), 0o755))
+
+		require.NoError(t, ReplaceInFile(path, v))
+
+		info, err := os.Stat(path)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o755), info.Mode())
+	})
+
 	t.Run("returns error for missing file", func(t *testing.T) {
 		err := ReplaceInFile(filepath.Join(t.TempDir(), "missing.txt"), v)
 		assert.Error(t, err)

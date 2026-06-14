@@ -264,6 +264,17 @@ func TestPrependChangelog(t *testing.T) {
 		assert.Less(t, strings.Index(content, "1.1.0"), strings.Index(content, "1.0.0"))
 	})
 
+	t.Run("preserves original file permissions", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "CHANGELOG.md")
+		require.NoError(t, os.WriteFile(path, []byte("# Changelog\n"), 0o640))
+
+		require.NoError(t, PrependChangelog(path, entry))
+
+		info, err := os.Stat(path)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o640), info.Mode())
+	})
+
 	t.Run("returns error on unwritable path", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "subdir", "CHANGELOG.md")
 		err := PrependChangelog(path, entry)

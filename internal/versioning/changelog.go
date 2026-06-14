@@ -112,13 +112,19 @@ func (e Entry) Render() string {
 
 // PrependChangelog inserts entry at the top of the CHANGELOG at path, after the
 // "# Changelog" header, creating the file if it does not exist.
+// Existing file permissions are preserved; new files are created with 0o644.
 func PrependChangelog(path string, entry Entry) error {
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode()
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("reading changelog %s: %w", path, err)
 	}
 
-	if err := os.WriteFile(path, []byte(buildChangelogContent(string(data), entry.Render())), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(buildChangelogContent(string(data), entry.Render())), mode); err != nil {
 		return fmt.Errorf("writing changelog %s: %w", path, err)
 	}
 	return nil

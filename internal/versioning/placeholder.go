@@ -43,8 +43,14 @@ func ReplacePlaceholders(content string, current Version) (string, error) {
 	return b.String(), nil
 }
 
-// ReplaceInFile replaces version placeholders in the file at path in-place.
+// ReplaceInFile replaces version placeholders in the file at path in-place,
+// preserving the file's original permissions.
 func ReplaceInFile(path string, current Version) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", path, err)
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", path, err)
@@ -55,7 +61,7 @@ func ReplaceInFile(path string, current Version) error {
 		return fmt.Errorf("replacing placeholders in %s: %w", path, err)
 	}
 
-	if err := os.WriteFile(path, []byte(result), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(result), info.Mode()); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	return nil
