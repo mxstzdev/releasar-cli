@@ -1,6 +1,9 @@
 package git
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -86,6 +89,59 @@ func TestParseLog(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestLog_FirstParent(t *testing.T) {
+	dir := t.TempDir()
+
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
+
+	run("init", "-b", "main")
+	run("config", "user.email", "test@example.com")
+	run("config", "user.name", "Test User")
+
+	pkgDir := filepath.Join(dir, "packages", "api")
+	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "init.go"), []byte("package api"), 0o644))
+	run("add", ".")
+	run("commit", "-m", "chore: initial commit")
+	run("tag", "v0.1.0")
+
+	// create dev branch, then add a commit on main that touches the package
+	run("checkout", "-b", "dev")
+	run("checkout", "main")
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "hotfix.go"), []byte("package api"), 0o644))
+	run("add", ".")
+	run("commit", "-m", "fix: hotfix from main")
+
+	// merge main into dev and add a dev-native commit
+	run("checkout", "dev")
+	run("merge", "main", "--no-ff", "-m", "chore: merge main into dev")
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "feature.go"), []byte("package api"), 0o644))
+	run("add", ".")
+	run("commit", "-m", "feat: add new feature")
+
+	c := &Client{
+		rootDirectory:    dir,
+		workingDirectory: pkgDir,
+	}
+
+	commits, err := c.Log("v0.1.0")
+	require.NoError(t, err)
+
+	subjects := make([]string, len(commits))
+	for i, commit := range commits {
+		subjects[i] = commit.Subject
+	}
+
+	assert.NotContains(t, subjects, "fix: hotfix from main", "commit from main must not appear via --first-parent")
+	assert.Contains(t, subjects, "feat: add new feature")
 }
 
 func TestTagName(t *testing.T) {

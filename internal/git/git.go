@@ -350,7 +350,7 @@ func (c *Client) Tag(name string, message string) error {
 }
 
 func (c *Client) Log(since string) ([]Commit, error) {
-	args := []string{"log", "--pretty=format:\x00%H\n%an\n%aI\n%s\n%b"}
+	args := []string{"log", "--first-parent", "--pretty=format:%x00%H\n%an\n%aI\n%s\n%b"}
 	if since != "" {
 		args = append(args, since+"..HEAD")
 	}
