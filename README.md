@@ -10,11 +10,13 @@ It helps you as a software developer to automate your project release workflow w
 - ✨ Release version recommendation
 - 🤖 Automatic CHANGELOG updates
 - *️⃣ Version placeholders *(e.g., `{{RLSR_LATEST}}`, `{{RLSR_NEXT.MAJOR}}`, ...)*
-- 🖥️ Support of various popular SCM providers including GitHub, GitLab, Gitea, Forgejo, ... 
+- 📦 Package manager auto-detection & integration *(npm, Yarn, pnpm, Bun, Composer, ...)*
+- 🗂️ Support of various popular project management providers including Jira, OpenProject, ...
+- 🖥️ Support of various popular SCM providers including GitHub, GitLab, Gitea, Forgejo, ...
 - 🧪 Tests tasks execution
-- 🚧 Build tasks execution 
+- 🚧 Build tasks execution
 
-## Support 
+## Support
 
 Releasar is a free and open-source project that can be used for both personal and commercial purposes without any cost.
 
@@ -22,7 +24,7 @@ However, I am always grateful for any support in the form of collaboration on th
 
 <a href='https://ko-fi.com/A0A71PVJ28' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi1.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
 
-## License 
+## License
 
-Releasar is released under the [GNU General Public License v3.0](LICENSE). 
+Releasar is released under the [GNU General Public License v3.0](LICENSE).
 
