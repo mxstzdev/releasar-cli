@@ -1,4 +1,4 @@
-module github.com/mariusvslprts/releasar-cli
+module github.com/mxstzdev/releasar-cli
 
 go 1.25.5
 

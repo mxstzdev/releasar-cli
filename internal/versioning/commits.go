@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mariusvslprts/releasar-cli/internal/git"
+	"github.com/mxstzdev/releasar-cli/internal/git"
 )
 
 // BumpKind represents the level of version increment derived from commit analysis.

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mariusvslprts/releasar-cli/internal/log"
+	"github.com/mxstzdev/releasar-cli/internal/log"
 )
 
 type Config struct {

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mariusvslprts/releasar-cli/internal/git"
+	"github.com/mxstzdev/releasar-cli/internal/git"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -16,7 +16,7 @@ linters:
 
 linters-settings:
   goimports:
-    local-prefixes: github.com/mariusvslprts/releasar-cli
+    local-prefixes: github.com/mxstzdev/releasar-cli
   exhaustive:
     default-signifies-exhaustive: true
 
