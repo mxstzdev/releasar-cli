@@ -1,0 +1,113 @@
+name: Bug Report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please check the [existing issues](https://github.com/mxstzdev/releasar-cli/issues) to avoid duplicates.
+
+  - type: input
+    id: version
+    attributes:
+      label: Releasar version
+      description: Run `releasar --version` and paste the output.
+      placeholder: "e.g. 0.3.1"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "e.g. macOS 15.4, Ubuntu 24.04, Windows 11"
+    validations:
+      required: true
+
+  - type: input
+    id: go_version
+    attributes:
+      label: Go version (if built from source)
+      placeholder: "e.g. go1.24.1 — leave blank if using a pre-built binary"
+
+  - type: dropdown
+    id: scm
+    attributes:
+      label: SCM provider
+      options:
+        - GitHub
+        - GitLab
+        - Gitea
+        - Forgejo
+        - Not applicable / local only
+    validations:
+      required: true
+
+  - type: dropdown
+    id: versioning
+    attributes:
+      label: Versioning scheme
+      options:
+        - SemVer
+        - CalVer
+        - Not applicable
+    validations:
+      required: true
+
+  - type: dropdown
+    id: project_type
+    attributes:
+      label: Project layout
+      options:
+        - Single package (monolith)
+        - Monorepo
+    validations:
+      required: true
+
+  - type: input
+    id: command
+    attributes:
+      label: Command run
+      description: The exact command that triggered the bug (redact any tokens).
+      placeholder: "e.g. releasar release --dry-run"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the full error message and any relevant output. Run with `--verbose` if available.
+      placeholder: What happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Config snippet
+      description: Paste the relevant parts of your `releasar.json` (or `package.json`/`composer.json` `releasar` section). Remove any secrets or tokens.
+      render: json
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+        3. …
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might help — repo structure, related issues, workarounds tried.
