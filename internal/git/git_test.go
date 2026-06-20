@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mariusvslprts/releasar-cli/internal/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -142,6 +143,145 @@ func TestLog_FirstParent(t *testing.T) {
 
 	assert.NotContains(t, subjects, "fix: hotfix from main", "commit from main must not appear via --first-parent")
 	assert.Contains(t, subjects, "feat: add new feature")
+}
+
+// setupRepo initialises a temporary git repository with one commit and returns the directory,
+// a run helper for raw git commands, and a fully initialised Client.
+func setupRepo(t *testing.T) (dir string, run func(...string), c *Client) {
+	t.Helper()
+	dir = t.TempDir()
+	run = func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
+	run("init", "-b", "main")
+	run("config", "user.email", "test@example.com")
+	run("config", "user.name", "Test User")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "file.txt"), []byte("hello"), 0o644))
+	run("add", ".")
+	run("commit", "-m", "initial commit")
+
+	c, err := New(dir, Config{DefaultBranch: "main", TagPrefix: "v"}, log.Get("test"))
+	require.NoError(t, err)
+	return
+}
+
+func TestRevParse(t *testing.T) {
+	dir, _, c := setupRepo(t)
+
+	t.Run("show-toplevel returns repo root", func(t *testing.T) {
+		// Resolve symlinks: on macOS t.TempDir() returns /var/… but git resolves to /private/var/…
+		resolved, err := filepath.EvalSymlinks(dir)
+		require.NoError(t, err)
+		out, err := c.RevParse("--show-toplevel")
+		require.NoError(t, err)
+		assert.Equal(t, resolved, out)
+	})
+
+	t.Run("abbrev-ref HEAD returns current branch", func(t *testing.T) {
+		out, err := c.RevParse("--abbrev-ref", "HEAD")
+		require.NoError(t, err)
+		assert.Equal(t, "main", out)
+	})
+}
+
+func TestReset(t *testing.T) {
+	dir, run, c := setupRepo(t)
+
+	initialSHA, err := c.RevParse("HEAD")
+	require.NoError(t, err)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "extra.txt"), []byte("extra"), 0o644))
+	run("add", ".")
+	run("commit", "-m", "second commit")
+
+	require.NoError(t, c.Reset(initialSHA, "--hard"))
+
+	head, err := c.RevParse("HEAD")
+	require.NoError(t, err)
+	assert.Equal(t, initialSHA, head)
+}
+
+func TestDeleteBranch(t *testing.T) {
+	_, run, c := setupRepo(t)
+	run("branch", "feature/test")
+
+	require.NoError(t, c.DeleteBranch("feature/test"))
+
+	err := exec.Command("git", "-C", c.rootDirectory, "rev-parse", "--verify", "feature/test").Run()
+	assert.Error(t, err, "branch should no longer exist")
+}
+
+func TestDeleteTag(t *testing.T) {
+	_, run, c := setupRepo(t)
+	run("tag", "-a", "v1.0.0", "-m", "release")
+
+	require.NoError(t, c.DeleteTag("1.0.0"))
+
+	err := exec.Command("git", "-C", c.rootDirectory, "rev-parse", "--verify", "refs/tags/v1.0.0").Run()
+	assert.Error(t, err, "tag should no longer exist")
+}
+
+func TestRemotes(t *testing.T) {
+	t.Run("no remotes returns empty slice", func(t *testing.T) {
+		_, _, c := setupRepo(t)
+		remotes, err := c.Remotes()
+		require.NoError(t, err)
+		assert.Empty(t, remotes)
+	})
+
+	t.Run("single remote", func(t *testing.T) {
+		_, run, c := setupRepo(t)
+		run("remote", "add", "origin", "https://github.com/example/repo.git")
+		remotes, err := c.Remotes()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"origin"}, remotes)
+	})
+
+	t.Run("multiple remotes", func(t *testing.T) {
+		_, run, c := setupRepo(t)
+		run("remote", "add", "origin", "https://github.com/example/repo.git")
+		run("remote", "add", "upstream", "https://github.com/upstream/repo.git")
+		remotes, err := c.Remotes()
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{"origin", "upstream"}, remotes)
+	})
+}
+
+func TestConflictedFilesAndCheckout(t *testing.T) {
+	dir, run, c := setupRepo(t)
+
+	// Create conflicting changes on a feature branch.
+	run("checkout", "-b", "feature")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "file.txt"), []byte("feature change"), 0o644))
+	run("add", ".")
+	run("commit", "-m", "feat: change file")
+
+	// Make a conflicting change on main.
+	run("checkout", "main")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "file.txt"), []byte("main change"), 0o644))
+	run("add", ".")
+	run("commit", "-m", "fix: change file on main")
+
+	// Trigger merge conflict (expected to fail).
+	cmd := exec.Command("git", "merge", "feature")
+	cmd.Dir = dir
+	_ = cmd.Run()
+
+	conflicted, err := c.ConflictedFiles()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"file.txt"}, conflicted)
+
+	// Resolve with --ours (main's version).
+	require.NoError(t, c.Checkout("--ours", "file.txt"))
+	require.NoError(t, c.Add("file.txt"))
+
+	content, err := os.ReadFile(filepath.Join(dir, "file.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "main change", string(content))
 }
 
 func TestTagName(t *testing.T) {

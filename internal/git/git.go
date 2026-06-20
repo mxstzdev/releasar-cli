@@ -243,55 +243,73 @@ func (c *Client) Merge(branch string, args ...string) error {
 	return nil
 }
 
-func (c *Client) MergeRelease(branch string) error {
-	err := c.Merge(branch, "--no-ff", "--no-commit")
-
+// RevParse runs git rev-parse with the given arguments and returns the trimmed output.
+func (c *Client) RevParse(args ...string) (string, error) {
+	out, err := c.exec("rev-parse", args...)
 	if err != nil {
-		return fmt.Errorf("merging release branch %s: %w", branch, err)
+		return "", fmt.Errorf("rev-parse %s: %w", strings.Join(args, " "), err)
 	}
+	return out, nil
+}
 
-	out, err := c.exec("diff", "--name-only", "--diff-filter=U")
-
+// Reset runs git reset with optional flags followed by the ref.
+func (c *Client) Reset(ref string, args ...string) error {
+	_, err := c.exec("reset", append(args, ref)...)
 	if err != nil {
-		return fmt.Errorf("merging release branch %s: %w", branch, err)
+		return fmt.Errorf("resetting to %s: %w", ref, err)
 	}
-
-	files := strings.Split(out, "\n")
-
-	for _, file := range files {
-		if file == "" {
-			continue
-		}
-
-		abs := filepath.Join(c.rootDirectory, file)
-		rel, err := filepath.Rel(c.workingDirectory, abs)
-
-		strategy := "--theirs"
-
-		if err == nil && !strings.HasPrefix(rel, "..") {
-			strategy = "--ours"
-		}
-
-		_, err = c.exec("checkout", strategy, file)
-
-		if err != nil {
-			return fmt.Errorf("resolving release branch conflict %s: %w", file, err)
-		}
-
-		_, err = c.exec("add", file)
-
-		if err != nil {
-			return fmt.Errorf("adding resolved release branch conflict %s: %w", file, err)
-		}
-	}
-
-	_, err = c.exec("commit", "--no-edit")
-
-	if err != nil {
-		return fmt.Errorf("committing resolved release branch conflicts: %w", err)
-	}
-
 	return nil
+}
+
+// Checkout runs git checkout with the given arguments.
+func (c *Client) Checkout(args ...string) error {
+	_, err := c.exec("checkout", args...)
+	if err != nil {
+		return fmt.Errorf("checkout %s: %w", strings.Join(args, " "), err)
+	}
+	return nil
+}
+
+// DeleteBranch force-deletes a local branch.
+func (c *Client) DeleteBranch(name string) error {
+	_, err := c.exec("branch", "-D", name)
+	if err != nil {
+		return fmt.Errorf("deleting branch %s: %w", name, err)
+	}
+	return nil
+}
+
+// DeleteTag deletes a local tag.
+func (c *Client) DeleteTag(name string) error {
+	_, err := c.exec("tag", "-d", c.tagName(name))
+	if err != nil {
+		return fmt.Errorf("deleting tag %s: %w", name, err)
+	}
+	return nil
+}
+
+// Remotes returns the list of configured remote names.
+func (c *Client) Remotes() ([]string, error) {
+	out, err := c.exec("remote")
+	if err != nil {
+		return nil, fmt.Errorf("listing remotes: %w", err)
+	}
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
+// ConflictedFiles returns the paths of files with unresolved merge conflicts.
+func (c *Client) ConflictedFiles() ([]string, error) {
+	out, err := c.exec("diff", "--name-only", "--diff-filter=U")
+	if err != nil {
+		return nil, fmt.Errorf("listing conflicted files: %w", err)
+	}
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
 }
 
 func (c *Client) Add(files ...string) error {
