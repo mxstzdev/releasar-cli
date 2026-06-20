@@ -80,8 +80,9 @@ func ParseTaskRef(ref TaskRef) (pm, script string) {
 }
 
 type TasksConfig struct {
-	Test  []TaskRef
-	Build []TaskRef
+	Test           []TaskRef
+	Build          []TaskRef
+	SecretScanning bool
 }
 
 type HooksConfig struct {
@@ -276,6 +277,7 @@ func applyDefaults(raw *rawConfig, pm PackageManagerKind) Config {
 	// Tasks
 	cfg.Tasks.Test = raw.Tasks.Test
 	cfg.Tasks.Build = raw.Tasks.Build
+	cfg.Tasks.SecretScanning = boolOr(raw.Tasks.SecretScanning, true)
 
 	// Hooks
 	cfg.Hooks.BeforeRelease = raw.Hooks.BeforeRelease
@@ -383,6 +385,9 @@ func mergeRaw(base, overlay *rawConfig) *rawConfig {
 	if len(overlay.Tasks.Build) > 0 {
 		m.Tasks.Build = overlay.Tasks.Build
 	}
+	if overlay.Tasks.SecretScanning != nil {
+		m.Tasks.SecretScanning = overlay.Tasks.SecretScanning
+	}
 
 	if overlay.Hooks.BeforeRelease != "" {
 		m.Hooks.BeforeRelease = overlay.Hooks.BeforeRelease
@@ -452,8 +457,9 @@ type rawChangelogConfig struct {
 }
 
 type rawTasksConfig struct {
-	Test  []TaskRef `json:"test"`
-	Build []TaskRef `json:"build"`
+	Test           []TaskRef `json:"test"`
+	Build          []TaskRef `json:"build"`
+	SecretScanning *bool     `json:"secretScanning"` // pointer: distinguish absent from false
 }
 
 type rawHooksConfig struct {

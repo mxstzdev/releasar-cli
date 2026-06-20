@@ -14,6 +14,7 @@ import (
 	"github.com/mxstzdev/releasar-cli/internal/config"
 	"github.com/mxstzdev/releasar-cli/internal/git"
 	"github.com/mxstzdev/releasar-cli/internal/log"
+	"github.com/mxstzdev/releasar-cli/internal/tasks"
 	"github.com/mxstzdev/releasar-cli/internal/ui"
 	"github.com/mxstzdev/releasar-cli/internal/versioning"
 	"github.com/rs/zerolog"
@@ -138,6 +139,10 @@ func (r *releaseRunner) run() error {
 	}
 
 	r.tag = r.cfg.Git.TagPrefix + r.nextVersion.String()
+
+	if err := r.runSecretScan(); err != nil {
+		return err
+	}
 
 	if err := r.createReleaseBranch(); err != nil {
 		return err
@@ -679,6 +684,14 @@ func detectIndent(data []byte) string {
 		}
 	}
 	return "  "
+}
+
+func (r *releaseRunner) runSecretScan() error {
+	if !r.cfg.Tasks.SecretScanning {
+		return nil
+	}
+	ui.Print("Scanning for secrets")
+	return tasks.RunSecretScan(r.workingDir, r.verbose)
 }
 
 func (r *releaseRunner) runBuildTasks() error {

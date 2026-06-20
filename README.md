@@ -17,7 +17,8 @@ It helps you as a software developer to automate your project release workflow w
 - 📦 Package manager auto-detection & integration *(npm, Yarn, pnpm, Bun, Composer, ...)*
 - 🗂️ Support of various popular project management providers including Jira, OpenProject, ...
 - 🖥️ Support of various popular SCM providers including GitHub, GitLab, Gitea, Forgejo, ...
-- 🧪 Tests tasks execution
+- 🔐 Secret scanning *(pre-release credential leak detection via built-in [gitleaks](https://github.com/gitleaks/gitleaks))*
+- 🧪 Tests tasks auto-detection & execution
 - 🚧 Build tasks execution
 
 ## Support
