@@ -36,15 +36,17 @@ type Config struct {
 }
 
 type GitConfig struct {
-	DefaultBranch         string
-	DevelopmentBranch     string
-	TagPrefix             string
-	Remote                string
-	ReleaseCommitTemplate string // vars: {{package}}, {{version}}, {{tag}}
+	DefaultBranch          string
+	DevelopmentBranch      string
+	TagPrefix              string
+	Remote                 string
+	ReleaseCommitTemplate  string // vars: {{package}}, {{version}}, {{tag}}
+	ReleaseBranchTemplate  string // vars: {{version}}, {{tag}}; empty = use built-in heuristic
 }
 
 type VersioningConfig struct {
-	Scheme string // "semver" | "calver"
+	Scheme            string   // "semver" | "calver"
+	PlaceholderExclude []string // glob patterns relative to workingDir; matched files are skipped during placeholder substitution
 }
 
 type SCMConfig struct {
@@ -88,7 +90,7 @@ type HooksConfig struct {
 }
 
 // Load resolves and validates the releasar configuration from workingDir.
-// It must be called after LoadDotEnv so that tokenEnv references resolve correctly.
+// Must be called after LoadDotEnv so that tokenEnv references resolve correctly.
 func Load(workingDir string) (*Config, error) {
 	workingDir, err := filepath.Abs(workingDir)
 	if err != nil {
@@ -102,6 +104,47 @@ func Load(workingDir string) (*Config, error) {
 
 	detected := detectPackageManager(workingDir)
 	cfg := applyDefaults(raw, detected)
+	cfg.SourceFile = sourceFile
+	cfg.DetectedPackageManager = detected
+
+	if err := validateTokens(&cfg); err != nil {
+		return nil, err
+	}
+
+	return &cfg, nil
+}
+
+// LoadLayered loads config from rootDir first, then overlays it with config from workingDir.
+// When rootDir == workingDir it behaves identically to Load(workingDir).
+// Must be called after LoadDotEnv so that tokenEnv references resolve correctly.
+func LoadLayered(rootDir, workingDir string) (*Config, error) {
+	rootDir, err := filepath.Abs(rootDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolving root directory: %w", err)
+	}
+	workingDir, err = filepath.Abs(workingDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolving working directory: %w", err)
+	}
+
+	if rootDir == workingDir {
+		return Load(workingDir)
+	}
+
+	// Root config is optional (monorepo roots may have none).
+	baseRaw, _, _ := loadRaw(rootDir)
+	if baseRaw == nil {
+		baseRaw = &rawConfig{}
+	}
+
+	overlayRaw, sourceFile, err := loadRaw(workingDir)
+	if err != nil {
+		return nil, err
+	}
+
+	merged := mergeRaw(baseRaw, overlayRaw)
+	detected := detectPackageManager(workingDir)
+	cfg := applyDefaults(merged, detected)
 	cfg.SourceFile = sourceFile
 	cfg.DetectedPackageManager = detected
 
@@ -210,9 +253,11 @@ func applyDefaults(raw *rawConfig, pm PackageManagerKind) Config {
 	cfg.Git.TagPrefix = stringOr(raw.Git.TagPrefix, "v")
 	cfg.Git.Remote = stringOr(raw.Git.Remote, "origin")
 	cfg.Git.ReleaseCommitTemplate = stringOr(raw.Git.ReleaseCommitTemplate, "chore(release): {{tag}}")
+	cfg.Git.ReleaseBranchTemplate = raw.Git.ReleaseBranchTemplate
 
 	// Versioning
 	cfg.Versioning.Scheme = stringOr(raw.Versioning.Scheme, "semver")
+	cfg.Versioning.PlaceholderExclude = raw.Versioning.PlaceholderExclude
 
 	// SCM
 	cfg.SCM.Provider = raw.SCM.Provider
@@ -275,6 +320,80 @@ func validateTokens(cfg *Config) error {
 	return nil
 }
 
+// mergeRaw overlays non-zero fields from overlay onto a copy of base.
+func mergeRaw(base, overlay *rawConfig) *rawConfig {
+	m := *base
+
+	if overlay.Git.DefaultBranch != "" {
+		m.Git.DefaultBranch = overlay.Git.DefaultBranch
+	}
+	if overlay.Git.DevelopmentBranch != "" {
+		m.Git.DevelopmentBranch = overlay.Git.DevelopmentBranch
+	}
+	if overlay.Git.TagPrefix != "" {
+		m.Git.TagPrefix = overlay.Git.TagPrefix
+	}
+	if overlay.Git.Remote != "" {
+		m.Git.Remote = overlay.Git.Remote
+	}
+	if overlay.Git.ReleaseCommitTemplate != "" {
+		m.Git.ReleaseCommitTemplate = overlay.Git.ReleaseCommitTemplate
+	}
+	if overlay.Git.ReleaseBranchTemplate != "" {
+		m.Git.ReleaseBranchTemplate = overlay.Git.ReleaseBranchTemplate
+	}
+
+	if overlay.Versioning.Scheme != "" {
+		m.Versioning.Scheme = overlay.Versioning.Scheme
+	}
+	if len(overlay.Versioning.PlaceholderExclude) > 0 {
+		m.Versioning.PlaceholderExclude = overlay.Versioning.PlaceholderExclude
+	}
+
+	if overlay.SCM.Provider != "" {
+		m.SCM.Provider = overlay.SCM.Provider
+	}
+	if overlay.SCM.Host != "" {
+		m.SCM.Host = overlay.SCM.Host
+	}
+	if overlay.SCM.TokenEnv != "" {
+		m.SCM.TokenEnv = overlay.SCM.TokenEnv
+	}
+
+	if overlay.PackageManager.Provider != "" {
+		m.PackageManager.Provider = overlay.PackageManager.Provider
+	}
+	if overlay.PackageManager.Host != "" {
+		m.PackageManager.Host = overlay.PackageManager.Host
+	}
+	if overlay.PackageManager.TokenEnv != "" {
+		m.PackageManager.TokenEnv = overlay.PackageManager.TokenEnv
+	}
+
+	if overlay.Changelog.Enabled != nil {
+		m.Changelog.Enabled = overlay.Changelog.Enabled
+	}
+	if overlay.Changelog.Path != "" {
+		m.Changelog.Path = overlay.Changelog.Path
+	}
+
+	if len(overlay.Tasks.Test) > 0 {
+		m.Tasks.Test = overlay.Tasks.Test
+	}
+	if len(overlay.Tasks.Build) > 0 {
+		m.Tasks.Build = overlay.Tasks.Build
+	}
+
+	if overlay.Hooks.BeforeRelease != "" {
+		m.Hooks.BeforeRelease = overlay.Hooks.BeforeRelease
+	}
+	if overlay.Hooks.AfterRelease != "" {
+		m.Hooks.AfterRelease = overlay.Hooks.AfterRelease
+	}
+
+	return &m
+}
+
 func stringOr(s, fallback string) string {
 	if s != "" {
 		return s
@@ -307,10 +426,12 @@ type rawGitConfig struct {
 	TagPrefix             string `json:"tagPrefix"`
 	Remote                string `json:"remote"`
 	ReleaseCommitTemplate string `json:"releaseCommitTemplate"`
+	ReleaseBranchTemplate string `json:"releaseBranchTemplate"`
 }
 
 type rawVersioningConfig struct {
-	Scheme string `json:"scheme"`
+	Scheme             string   `json:"scheme"`
+	PlaceholderExclude []string `json:"placeholderExclude"`
 }
 
 type rawSCMConfig struct {
