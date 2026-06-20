@@ -28,11 +28,12 @@ type Client struct {
 }
 
 type Commit struct {
-	Hash      string
-	Author    string
-	Timestamp time.Time
-	Subject   string
-	Body      string
+	Hash        string
+	Author      string
+	AuthorEmail string
+	Timestamp   time.Time
+	Subject     string
+	Body        string
 }
 
 func New(workingDir string, cfg Config, log *log.Channel) (*Client, error) {
@@ -368,7 +369,7 @@ func (c *Client) Tag(name string, message string) error {
 }
 
 func (c *Client) Log(since string) ([]Commit, error) {
-	args := []string{"log", "--first-parent", "--pretty=format:%x00%H\n%an\n%aI\n%s\n%b"}
+	args := []string{"log", "--first-parent", "--pretty=format:%x00%H\n%an\n%ae\n%aI\n%s\n%b"}
 	if since != "" {
 		args = append(args, since+"..HEAD")
 	}
@@ -399,22 +400,23 @@ func parseLog(data []byte) ([]Commit, error) {
 		if len(record) == 0 {
 			continue
 		}
-		lines := bytes.SplitN(record, []byte{'\n'}, 5)
-		if len(lines) < 4 {
+		lines := bytes.SplitN(record, []byte{'\n'}, 6)
+		if len(lines) < 5 {
 			continue
 		}
-		ts, err := time.Parse(time.RFC3339, strings.TrimSpace(string(lines[2])))
+		ts, err := time.Parse(time.RFC3339, strings.TrimSpace(string(lines[3])))
 		if err != nil {
-			return nil, fmt.Errorf("parsing commit timestamp %q: %w", string(lines[2]), err)
+			return nil, fmt.Errorf("parsing commit timestamp %q: %w", string(lines[3]), err)
 		}
 		commit := Commit{
-			Hash:      string(bytes.TrimSpace(lines[0])),
-			Author:    string(bytes.TrimSpace(lines[1])),
-			Timestamp: ts,
-			Subject:   string(bytes.TrimSpace(lines[3])),
+			Hash:        string(bytes.TrimSpace(lines[0])),
+			Author:      string(bytes.TrimSpace(lines[1])),
+			AuthorEmail: string(bytes.TrimSpace(lines[2])),
+			Timestamp:   ts,
+			Subject:     string(bytes.TrimSpace(lines[4])),
 		}
-		if len(lines) == 5 {
-			commit.Body = string(bytes.TrimSpace(lines[4]))
+		if len(lines) == 6 {
+			commit.Body = string(bytes.TrimSpace(lines[5]))
 		}
 		commits = append(commits, commit)
 	}
