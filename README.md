@@ -1,5 +1,9 @@
 # Releasar CLI
 
+> [!WARNING]
+> Releasar is currently under active development and not yet production-ready.
+> APIs and configuration formats may change without notice until the first stable release.
+
 Releasar is a cross-platform project release tool for Git based projects written in Go.
 
 It helps you as a software developer to automate your project release workflow without requiring a CI/CD pipeline, but offers some powerful features such as:
