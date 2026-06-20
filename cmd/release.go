@@ -16,6 +16,7 @@ import (
 	"github.com/mxstzdev/releasar-cli/internal/log"
 	"github.com/mxstzdev/releasar-cli/internal/ui"
 	"github.com/mxstzdev/releasar-cli/internal/versioning"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 )
 
@@ -36,16 +37,18 @@ var releaseCmd = &cobra.Command{
 		if len(args) > 0 {
 			bumpArg = args[0]
 		}
-		return newReleaseRunner(flagDryRun, flagYes, flagVersion, bumpArg).run()
+		return newReleaseRunner(flagDryRun, flagYes, flagVerbosity, flagVersion, bumpArg).run()
 	},
 }
 
 type releaseRunner struct {
-	cfg    *config.Config
-	git    *git.Client
-	log    *log.Channel
-	dryRun bool
-	yes    bool
+	cfg     *config.Config
+	git     *git.Client
+	log     *log.Channel
+	dryRun  bool
+	yes     bool
+	verbose bool
+	debug   bool
 
 	versionFlag string
 	bumpArg     string
@@ -70,13 +73,25 @@ type releaseRunner struct {
 	changedFiles   []string
 }
 
-func newReleaseRunner(dryRun, yes bool, versionFlag, bumpArg string) *releaseRunner {
+func newReleaseRunner(dryRun, yes bool, verbosity int, versionFlag, bumpArg string) *releaseRunner {
+	if verbosity >= 2 {
+		lvl := zerolog.DebugLevel
+		log.Init(log.Config{Level: &lvl})
+	}
 	return &releaseRunner{
 		dryRun:      dryRun,
 		yes:         yes,
+		verbose:     verbosity >= 1,
+		debug:       verbosity >= 2,
 		versionFlag: versionFlag,
 		bumpArg:     bumpArg,
 		log:         log.Get("release"),
+	}
+}
+
+func (r *releaseRunner) vprintf(format string, args ...any) {
+	if r.verbose {
+		fmt.Printf("  "+format, args...)
 	}
 }
 
@@ -192,6 +207,11 @@ func bumpKindFromArg(arg string) versioning.BumpKind {
 }
 
 func (r *releaseRunner) initialize() error {
+	ui.Print("Initializing")
+	if r.debug {
+		r.vprintf("Debug log: %s\n", filepath.Join("var/log/releasar", "releasar.log"))
+	}
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
@@ -241,10 +261,19 @@ func (r *releaseRunner) initialize() error {
 		return fmt.Errorf("initialising git client: %w", err)
 	}
 
+	branchStrategy := "git-flow"
+	if r.singleBranch {
+		branchStrategy = "single-branch"
+	}
+	r.vprintf("Branch strategy: %s\n", branchStrategy)
+	r.vprintf("Repository: %s\n", r.repoRoot)
+
 	return nil
 }
 
 func (r *releaseRunner) detectVersion() error {
+	ui.Print("Detecting version")
+
 	branch, err := r.git.CurrentBranch()
 	if err != nil {
 		return fmt.Errorf("detecting current branch: %w", err)
@@ -300,11 +329,20 @@ func (r *releaseRunner) detectVersion() error {
 	}
 	r.parsedCommits = versioning.ParseCommits(commits)
 
+	if latestTag == "" {
+		r.vprintf("Current version: %s (initial)\n", r.currentVersion.String())
+	} else {
+		r.vprintf("Current version: %s (tag %s)\n", r.currentVersion.String(), latestTag)
+	}
+	r.vprintf("Commits analyzed: %d\n", len(commits))
+
 	fmt.Println(ui.Note("PM version check not yet implemented"))
 	return nil
 }
 
 func (r *releaseRunner) recommendVersion() error {
+	ui.Print("Analyzing commits")
+
 	bump := versioning.Recommend(r.parsedCommits)
 
 	next, err := r.currentVersion.Increment(bump)
@@ -312,6 +350,23 @@ func (r *releaseRunner) recommendVersion() error {
 		return fmt.Errorf("computing next version: %w", err)
 	}
 	r.nextVersion = next
+
+	if r.verbose {
+		var feat, fix, breaking, other int
+		for _, c := range r.parsedCommits {
+			switch {
+			case c.Breaking:
+				breaking++
+			case c.Type == "feat":
+				feat++
+			case c.Type == "fix":
+				fix++
+			default:
+				other++
+			}
+		}
+		r.vprintf("feat: %d  fix: %d  breaking: %d  other: %d\n", feat, fix, breaking, other)
+	}
 
 	if bump == versioning.BumpNone {
 		fmt.Println(ui.Warning("No releasable commits found — no version bump is required."))
@@ -359,6 +414,8 @@ func (r *releaseRunner) confirmVersion() error {
 }
 
 func (r *releaseRunner) createReleaseBranch() error {
+	ui.Print("Creating release branch")
+
 	if tmpl := r.cfg.Git.ReleaseBranchTemplate; tmpl != "" {
 		r.releaseBranch = strings.NewReplacer(
 			"{{version}}", r.nextVersion.String(),
@@ -368,6 +425,7 @@ func (r *releaseRunner) createReleaseBranch() error {
 		r.releaseBranch = deriveReleaseBranch(r.cfg.Git.DevelopmentBranch, r.nextVersion.String())
 	}
 	fmt.Printf("Release branch: %s\n", r.releaseBranch)
+	r.vprintf("Base branch: %s\n", r.cfg.Git.DevelopmentBranch)
 
 	if r.dryRun {
 		fmt.Printf("[dry-run] would create branch %s from %s\n", r.releaseBranch, r.cfg.Git.DevelopmentBranch)
@@ -397,6 +455,8 @@ func deriveReleaseBranch(devBranch, version string) string {
 }
 
 func (r *releaseRunner) mergeMainIntoRelease() error {
+	ui.Print("Merging main into release")
+
 	if r.dryRun {
 		fmt.Printf("[dry-run] would merge %s into %s\n", r.cfg.Git.DefaultBranch, r.releaseBranch)
 		return nil
@@ -465,11 +525,15 @@ func (r *releaseRunner) pmAssignTickets() error {
 }
 
 func (r *releaseRunner) updateChangelog() error {
+	ui.Print("Updating changelog")
+
 	if !r.cfg.Changelog.Enabled {
+		r.vprintf("Disabled — skipping\n")
 		return nil
 	}
 
 	changelogPath := filepath.Join(r.workingDir, r.cfg.Changelog.Path)
+	r.vprintf("Path: %s\n", changelogPath)
 	entry := versioning.ChangelogFromCommits(r.nextVersion.String(), time.Now(), r.parsedCommits)
 
 	if r.dryRun {
@@ -485,6 +549,9 @@ func (r *releaseRunner) updateChangelog() error {
 }
 
 func (r *releaseRunner) applySubstitutions() error {
+	ui.Print("Applying version substitutions")
+	r.vprintf("Working directory: %s\n", r.workingDir)
+
 	if r.dryRun {
 		fmt.Printf("[dry-run] would substitute placeholders in %s\n", r.workingDir)
 		return nil
@@ -626,6 +693,7 @@ func (r *releaseRunner) runTasks(label string, tasks []config.TaskRef) error {
 	if len(tasks) == 0 {
 		return nil
 	}
+	ui.Print("Running " + label + " tasks")
 	for _, ref := range tasks {
 		pm, script := config.ParseTaskRef(ref)
 		if pm == "" {
@@ -652,6 +720,8 @@ func (r *releaseRunner) runTasks(label string, tasks []config.TaskRef) error {
 }
 
 func (r *releaseRunner) reviewGate() error {
+	ui.Print("Review gate")
+
 	if len(r.changedFiles) > 0 {
 		fmt.Println("\nModified files:")
 		for _, f := range r.changedFiles {
@@ -684,6 +754,8 @@ func (r *releaseRunner) reviewGate() error {
 }
 
 func (r *releaseRunner) commitRelease() error {
+	ui.Print("Committing release")
+
 	var subject string
 	if r.singleBranch {
 		subject = strings.ReplaceAll(r.cfg.Git.ReleaseCommitTemplate, "{{tag}}", r.tag)
@@ -691,6 +763,8 @@ func (r *releaseRunner) commitRelease() error {
 		subject = "chore(release): " + r.nextVersion.String()
 	}
 	message := subject + "\n\nCo-authored-by: releasar v" + appVersion + " <noreply@releasar.dev>"
+
+	r.vprintf("Commit: %s\n", subject)
 
 	if r.dryRun {
 		fmt.Printf("[dry-run] would commit on %s: %q\n", r.releaseBranch, subject)
@@ -707,6 +781,9 @@ func (r *releaseRunner) commitRelease() error {
 }
 
 func (r *releaseRunner) tagRelease() error {
+	ui.Print("Tagging release")
+	r.vprintf("Tag: %s\n", r.tag)
+
 	if r.dryRun {
 		fmt.Printf("[dry-run] would create tag %s on release branch HEAD\n", r.tag)
 		return nil
@@ -720,6 +797,9 @@ func (r *releaseRunner) tagRelease() error {
 }
 
 func (r *releaseRunner) mergeIntoMain() error {
+	ui.Print("Merging into main")
+	r.vprintf("Target branch: %s\n", r.cfg.Git.DefaultBranch)
+
 	if r.dryRun {
 		fmt.Printf("[dry-run] would merge %s into %s\n", r.releaseBranch, r.cfg.Git.DefaultBranch)
 		return nil
@@ -780,6 +860,9 @@ func (r *releaseRunner) verifySquashCommitFiles() error {
 }
 
 func (r *releaseRunner) mergeIntoDev() error {
+	ui.Print("Merging into dev")
+	r.vprintf("Target branch: %s\n", r.cfg.Git.DevelopmentBranch)
+
 	if r.dryRun {
 		fmt.Printf("[dry-run] would merge %s into %s\n", r.releaseBranch, r.cfg.Git.DevelopmentBranch)
 		return nil
@@ -795,6 +878,9 @@ func (r *releaseRunner) mergeIntoDev() error {
 }
 
 func (r *releaseRunner) cleanupReleaseBranch() error {
+	ui.Print("Cleaning up release branch")
+	r.vprintf("Branch: %s\n", r.releaseBranch)
+
 	if r.dryRun {
 		fmt.Printf("[dry-run] would delete branch %s\n", r.releaseBranch)
 		return nil
@@ -811,6 +897,9 @@ func (r *releaseRunner) cleanupReleaseBranch() error {
 }
 
 func (r *releaseRunner) push() error {
+	ui.Print("Pushing to remote")
+	r.vprintf("Remote: %s\n", r.cfg.Git.Remote)
+
 	// Local release is done — disable rollback from this point.
 	r.completed = true
 
