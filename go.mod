@@ -5,7 +5,7 @@ go 1.25.11
 require (
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/charmbracelet/x/term v0.2.1
+	github.com/charmbracelet/x/term v0.2.2
 	github.com/gen2brain/beeep v0.11.2
 	github.com/joho/godotenv v1.5.1
 	github.com/rs/zerolog v1.35.1
