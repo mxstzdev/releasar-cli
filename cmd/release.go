@@ -14,6 +14,7 @@ import (
 	"github.com/mxstzdev/releasar-cli/internal/config"
 	"github.com/mxstzdev/releasar-cli/internal/git"
 	"github.com/mxstzdev/releasar-cli/internal/log"
+	"github.com/mxstzdev/releasar-cli/internal/scm"
 	"github.com/mxstzdev/releasar-cli/internal/tasks"
 	"github.com/mxstzdev/releasar-cli/internal/ui"
 	"github.com/mxstzdev/releasar-cli/internal/versioning"
@@ -59,6 +60,8 @@ type releaseRunner struct {
 	originalBranch string
 	mainHeadSHA    string
 	devHeadSHA     string
+
+	scmProvider scm.Provider // nil if no SCM provider is configured
 
 	singleBranch         bool
 	releaseBranchCreated bool
@@ -193,6 +196,9 @@ func (r *releaseRunner) run() error {
 	if err := r.push(); err != nil {
 		return err
 	}
+	if err := r.scmCreateRelease(); err != nil {
+		return err
+	}
 	if err := r.pmClose(); err != nil {
 		return err
 	}
@@ -272,6 +278,27 @@ func (r *releaseRunner) initialize() error {
 	}
 	r.vprintf("Branch strategy: %s\n", branchStrategy)
 	r.vprintf("Repository: %s\n", r.repoRoot)
+
+	if cfg.SCM.Provider != "" {
+		token := os.Getenv(cfg.SCM.TokenEnv)
+		remoteURL, err := r.git.RemoteURL(cfg.Git.Remote)
+		if err != nil {
+			return fmt.Errorf("resolving SCM remote URL: %w", err)
+		}
+		owner, repo, err := scm.ParseRemoteURL(remoteURL)
+		if err != nil {
+			return fmt.Errorf("parsing SCM remote URL: %w", err)
+		}
+		r.scmProvider, err = scm.New(cfg.SCM.Provider, scm.Config{
+			Host:  cfg.SCM.Host,
+			Token: token,
+			Owner: owner,
+			Repo:  repo,
+		})
+		if err != nil {
+			return fmt.Errorf("initialising SCM provider: %w", err)
+		}
+	}
 
 	return nil
 }
@@ -1040,6 +1067,40 @@ func (r *releaseRunner) pmClose() error {
 	if ok {
 		fmt.Println(ui.Note("PM version close not yet implemented"))
 	}
+	return nil
+}
+
+func (r *releaseRunner) scmCreateRelease() error {
+	if r.scmProvider == nil {
+		return nil
+	}
+
+	entry := versioning.ChangelogFromCommits(r.nextVersion.String(), time.Now(), r.parsedCommits)
+	body := entry.Render()
+
+	if r.dryRun {
+		fmt.Printf("[dry-run] would create SCM release for %s\n", r.tag)
+		return nil
+	}
+
+	if !r.yes {
+		ok, err := ui.Confirm(
+			"Create SCM release?",
+			fmt.Sprintf("Will publish release %s on %s.", r.tag, r.cfg.SCM.Provider),
+		)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return nil
+		}
+	}
+
+	url, err := r.scmProvider.CreateRelease(r.tag, r.tag, body)
+	if err != nil {
+		return fmt.Errorf("creating SCM release: %w", err)
+	}
+	fmt.Printf("Release published: %s\n", url)
 	return nil
 }
 

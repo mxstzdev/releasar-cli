@@ -301,6 +301,15 @@ func (c *Client) Remotes() ([]string, error) {
 	return strings.Split(out, "\n"), nil
 }
 
+// RemoteURL returns the fetch URL of the named remote.
+func (c *Client) RemoteURL(name string) (string, error) {
+	out, err := c.exec("remote", "get-url", name)
+	if err != nil {
+		return "", fmt.Errorf("getting URL for remote %q: %w", name, err)
+	}
+	return out, nil
+}
+
 // ConflictedFiles returns the paths of files with unresolved merge conflicts.
 func (c *Client) ConflictedFiles() ([]string, error) {
 	out, err := c.exec("diff", "--name-only", "--diff-filter=U")

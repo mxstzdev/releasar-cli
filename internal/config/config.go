@@ -50,7 +50,7 @@ type VersioningConfig struct {
 }
 
 type SCMConfig struct {
-	Provider string // "github" | "gitlab" | "gitea" | "forgejo"
+	Provider string // "github" | "gitlab" | "gitea" | "forgejo" | "codeberg"
 	Host     string
 	TokenEnv string // name of the env var holding the API token
 }
@@ -296,6 +296,8 @@ func defaultSCMTokenEnv(provider string) string {
 		return "GITEA_TOKEN"
 	case "forgejo":
 		return "FORGEJO_TOKEN"
+	case "codeberg":
+		return "CODEBERG_TOKEN"
 	default:
 		return ""
 	}
