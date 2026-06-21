@@ -30,6 +30,7 @@ type Config struct {
 	Versioning VersioningConfig
 	SCM        SCMConfig
 	PackageManager PackageManagerConfig
+	Tracker    TrackerConfig
 	Changelog  ChangelogConfig
 	Tasks      TasksConfig
 	Hooks      HooksConfig
@@ -59,6 +60,15 @@ type PackageManagerConfig struct {
 	Provider string // explicit override of DetectedPackageManager
 	Host     string // private/self-hosted registry URL
 	TokenEnv string // name of the env var holding the registry token
+}
+
+// TrackerConfig holds configuration for the issue tracker integration.
+type TrackerConfig struct {
+	Provider   string // "github" | "gitea" | "forgejo" | "codeberg" | "jira" | "openproject"
+	Host       string // base API URL; adapter uses provider default if empty
+	TokenEnv   string // name of the env var holding the API token
+	EmailEnv   string // name of the env var holding the account email (Jira only)
+	ProjectKey string // Jira: project key (e.g. "MYPROJ"); OpenProject: numeric project ID
 }
 
 type ChangelogConfig struct {
@@ -270,6 +280,13 @@ func applyDefaults(raw *rawConfig, pm PackageManagerKind) Config {
 	cfg.PackageManager.Host = raw.PackageManager.Host
 	cfg.PackageManager.TokenEnv = raw.PackageManager.TokenEnv
 
+	// Tracker
+	cfg.Tracker.Provider = raw.Tracker.Provider
+	cfg.Tracker.Host = raw.Tracker.Host
+	cfg.Tracker.TokenEnv = stringOr(raw.Tracker.TokenEnv, defaultTrackerTokenEnv(raw.Tracker.Provider))
+	cfg.Tracker.EmailEnv = raw.Tracker.EmailEnv
+	cfg.Tracker.ProjectKey = raw.Tracker.ProjectKey
+
 	// Changelog
 	cfg.Changelog.Enabled = boolOr(raw.Changelog.Enabled, true)
 	cfg.Changelog.Path = stringOr(raw.Changelog.Path, "CHANGELOG.md")
@@ -284,6 +301,25 @@ func applyDefaults(raw *rawConfig, pm PackageManagerKind) Config {
 	cfg.Hooks.AfterRelease = raw.Hooks.AfterRelease
 
 	return cfg
+}
+
+func defaultTrackerTokenEnv(provider string) string {
+	switch provider {
+	case "github":
+		return "GITHUB_TOKEN"
+	case "gitea":
+		return "GITEA_TOKEN"
+	case "forgejo":
+		return "FORGEJO_TOKEN"
+	case "codeberg":
+		return "CODEBERG_TOKEN"
+	case "jira":
+		return "JIRA_TOKEN"
+	case "openproject":
+		return "OPENPROJECT_TOKEN"
+	default:
+		return ""
+	}
 }
 
 func defaultSCMTokenEnv(provider string) string {
@@ -319,6 +355,9 @@ func validateTokens(cfg *Config) error {
 		return err
 	}
 	if err := check(cfg.PackageManager.TokenEnv, "pm"); err != nil {
+		return err
+	}
+	if err := check(cfg.Tracker.TokenEnv, "tracker."+cfg.Tracker.Provider); err != nil {
 		return err
 	}
 	return nil
@@ -374,6 +413,22 @@ func mergeRaw(base, overlay *rawConfig) *rawConfig {
 		m.PackageManager.TokenEnv = overlay.PackageManager.TokenEnv
 	}
 
+	if overlay.Tracker.Provider != "" {
+		m.Tracker.Provider = overlay.Tracker.Provider
+	}
+	if overlay.Tracker.Host != "" {
+		m.Tracker.Host = overlay.Tracker.Host
+	}
+	if overlay.Tracker.TokenEnv != "" {
+		m.Tracker.TokenEnv = overlay.Tracker.TokenEnv
+	}
+	if overlay.Tracker.EmailEnv != "" {
+		m.Tracker.EmailEnv = overlay.Tracker.EmailEnv
+	}
+	if overlay.Tracker.ProjectKey != "" {
+		m.Tracker.ProjectKey = overlay.Tracker.ProjectKey
+	}
+
 	if overlay.Changelog.Enabled != nil {
 		m.Changelog.Enabled = overlay.Changelog.Enabled
 	}
@@ -422,9 +477,18 @@ type rawConfig struct {
 	Versioning rawVersioningConfig `json:"versioning"`
 	SCM        rawSCMConfig        `json:"scm"`
 	PackageManager rawPackageManagerConfig `json:"pm"`
+	Tracker    rawTrackerConfig    `json:"tracker"`
 	Changelog  rawChangelogConfig  `json:"changelog"`
 	Tasks      rawTasksConfig      `json:"tasks"`
 	Hooks      rawHooksConfig      `json:"hooks"`
+}
+
+type rawTrackerConfig struct {
+	Provider   string `json:"provider"`
+	Host       string `json:"host"`
+	TokenEnv   string `json:"tokenEnv"`
+	EmailEnv   string `json:"emailEnv"`
+	ProjectKey string `json:"projectKey"`
 }
 
 type rawGitConfig struct {
