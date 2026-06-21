@@ -3,7 +3,7 @@ GO      := go
 DIST    := dist
 STORAGE := storage
 
-.PHONY: build build-all test test-integration vet lint clean \
+.PHONY: build build-dist test test-integration vet lint clean \
         build-darwin-amd64 build-darwin-arm64 \
         build-linux-amd64 build-linux-arm64 \
         build-windows-amd64 build-windows-arm64 \
@@ -13,7 +13,7 @@ STORAGE := storage
 build:
 	$(GO) build -o $(BINARY) .
 
-build-all: build-darwin-amd64 build-darwin-arm64 build-linux-amd64 build-linux-arm64 build-windows-amd64 build-windows-arm64
+build-dist: build-darwin-amd64 build-darwin-arm64 build-linux-amd64 build-linux-arm64 build-windows-amd64 build-windows-arm64
 
 build-macos: build-darwin-amd64 build-darwin-arm64
 build-linux: build-linux-amd64 build-linux-arm64
