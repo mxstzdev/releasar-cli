@@ -174,6 +174,37 @@ func LoadLayered(rootDir, workingDir string) (*Config, error) {
 	return &cfg, nil
 }
 
+// LoadFile loads releasar config from an explicit file path, bypassing auto-detection.
+// workingDir is used only to detect the package manager.
+// Must be called after LoadDotEnv so that tokenEnv references resolve correctly.
+func LoadFile(path, workingDir string) (*Config, error) {
+	var err error
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolving config path: %w", err)
+	}
+	workingDir, err = filepath.Abs(workingDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolving working directory: %w", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading config file: %w", err)
+	}
+	var raw rawConfig
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("parsing config file: %w", err)
+	}
+	detected := detectPackageManager(workingDir)
+	cfg := applyDefaults(&raw, detected)
+	cfg.SourceFile = path
+	cfg.DetectedPackageManager = detected
+	if err := validateTokens(&cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
 // loadRaw finds and parses the config file, returning the raw struct and its absolute path.
 func loadRaw(workingDir string) (*rawConfig, string, error) {
 	// 1. releasar.json
