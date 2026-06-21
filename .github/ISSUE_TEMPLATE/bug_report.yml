@@ -39,6 +39,7 @@ body:
         - GitLab
         - Gitea
         - Forgejo
+        - Codeberg
         - Not applicable / local only
     validations:
       required: true
@@ -50,6 +51,19 @@ body:
       options:
         - SemVer
         - CalVer
+        - Not applicable
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tracker
+    attributes:
+      label: Issue tracker (if relevant)
+      options:
+        - GitHub Issues
+        - Gitea / Forgejo / Codeberg
+        - Jira
+        - OpenProject
         - Not applicable
     validations:
       required: true
@@ -85,10 +99,18 @@ body:
     id: actual
     attributes:
       label: Actual behavior
-      description: Include the full error message and any relevant output. Run with `--verbose` if available.
+      description: Include the full error message and terminal output.
       placeholder: What happened instead?
     validations:
       required: true
+
+  - type: textarea
+    id: debug_log
+    attributes:
+      label: Debug log
+      description: Re-run the same command with `-vv` and paste the log file output here. This captures internal state and API responses that help diagnose the issue.
+      placeholder: "releasar release -vv"
+      render: shell
 
   - type: textarea
     id: config
