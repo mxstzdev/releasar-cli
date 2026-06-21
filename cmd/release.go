@@ -24,30 +24,44 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var flagVersion string
+var (
+	flagVersion       string
+	flagDryRun        bool
+	flagNoInteraction bool
+	flagConfigFile    string
+)
 
 func init() {
 	releaseCmd.Flags().StringVar(&flagVersion, "version", "", "release this exact version, skipping detection")
+	releaseCmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "walk through the release flow without writing anything")
+	releaseCmd.Flags().BoolVarP(&flagNoInteraction, "no-interaction", "n", false, "skip interactive confirmations")
+	releaseCmd.Flags().StringVarP(&flagConfigFile, "configuration", "c", "", "explicit path to config file, bypasses auto-detection")
 	rootCmd.AddCommand(releaseCmd)
 }
 
 var releaseCmd = &cobra.Command{
 	Use:       "release [major|minor|patch]",
-	Short:     "Run the full release workflow",
+	Short:     "Run the full project release workflow",
 	ValidArgs: []string{"major", "minor", "patch"},
 	Args:      cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if flagQuiet && flagVerbosity > 0 {
+			return fmt.Errorf("--quiet and --verbose are mutually exclusive")
+		}
 		var bumpArg string
 		if len(args) > 0 {
 			bumpArg = args[0]
 		}
 		r := &releaseRunner{
-			dryRun:        flagDryRun,
-			noInteraction: flagNoInteraction,
-			verbose:       flagVerbosity >= 1,
-			debug:         flagVerbosity >= 2,
-			versionFlag:   flagVersion,
-			bumpArg:       bumpArg,
+			dryRun:         flagDryRun,
+			noInteraction:  flagNoInteraction,
+			verbose:        flagVerbosity >= 1,
+			debug:          flagVerbosity >= 2,
+			versionFlag:    flagVersion,
+			bumpArg:        bumpArg,
+			quiet:          flagQuiet,
+			configFile:     flagConfigFile,
+			workingDirFlag: flagWorkingDir,
 		}
 		return r.run()
 	},
@@ -61,9 +75,12 @@ type releaseRunner struct {
 	noInteraction bool
 	verbose       bool
 	debug         bool
+	quiet         bool
 
-	versionFlag string
-	bumpArg     string
+	versionFlag    string
+	bumpArg        string
+	configFile     string
+	workingDirFlag string
 
 	workingDir     string
 	repoRoot       string
@@ -97,6 +114,12 @@ func (r *releaseRunner) vprintf(format string, args ...any) {
 	}
 }
 
+func (r *releaseRunner) print(title string, desc ...string) {
+	if !r.quiet {
+		ui.Print(title, desc...)
+	}
+}
+
 func (r *releaseRunner) run() error {
 	if err := r.initialize(); err != nil {
 		return err
@@ -125,8 +148,10 @@ func (r *releaseRunner) run() error {
 			return fmt.Errorf("computing next version: %w", err)
 		}
 		r.nextVersion = next
-		fmt.Printf("Current version : %s\nRequested bump  : %s\nNext version    : %s\n",
-			r.currentVersion.String(), r.bumpArg, r.nextVersion.String())
+		if !r.quiet {
+			fmt.Printf("Current version : %s\nRequested bump  : %s\nNext version    : %s\n",
+				r.currentVersion.String(), r.bumpArg, r.nextVersion.String())
+		}
 		if err := r.confirmVersion(); err != nil {
 			return err
 		}
@@ -217,7 +242,7 @@ func bumpKindFromArg(arg string) versioning.BumpKind {
 }
 
 func (r *releaseRunner) initialize() error {
-	ui.Print("Initializing")
+	r.print("Initializing")
 
 	if _, err := exec.LookPath("git"); err != nil {
 		return fmt.Errorf("git is not installed or not in PATH")
@@ -227,7 +252,16 @@ func (r *releaseRunner) initialize() error {
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
 	}
-	r.workingDir = cwd
+
+	if r.workingDirFlag != "" {
+		abs, err := filepath.Abs(r.workingDirFlag)
+		if err != nil {
+			return fmt.Errorf("resolving working directory: %w", err)
+		}
+		r.workingDir = abs
+	} else {
+		r.workingDir = cwd
+	}
 
 	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
@@ -235,8 +269,10 @@ func (r *releaseRunner) initialize() error {
 	}
 	r.repoRoot = strings.TrimSpace(string(out))
 
-	if r.workingDir != r.repoRoot {
-		fmt.Printf("Working directory: %s\nRepo root:        %s\n", r.workingDir, r.repoRoot)
+	if r.workingDir != r.repoRoot && r.workingDirFlag == "" {
+		if !r.quiet {
+			fmt.Printf("Working directory: %s\nRepo root:        %s\n", r.workingDir, r.repoRoot)
+		}
 		ok, err := ui.Confirm("Confirm working directory", fmt.Sprintf("%s is the package root for this release", r.workingDir))
 		if err != nil {
 			return err
@@ -250,7 +286,12 @@ func (r *releaseRunner) initialize() error {
 		return fmt.Errorf("loading .env: %w", err)
 	}
 
-	cfg, err := config.LoadLayered(r.repoRoot, r.workingDir)
+	var cfg *config.Config
+	if r.configFile != "" {
+		cfg, err = config.LoadFile(r.configFile, r.workingDir)
+	} else {
+		cfg, err = config.LoadLayered(r.repoRoot, r.workingDir)
+	}
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -379,7 +420,7 @@ func (r *releaseRunner) initialize() error {
 }
 
 func (r *releaseRunner) detectVersion() error {
-	ui.Print("Detecting release version")
+	r.print("Detecting release version")
 
 	branch, err := r.git.CurrentBranch()
 	if err != nil {
@@ -446,7 +487,7 @@ func (r *releaseRunner) detectVersion() error {
 }
 
 func (r *releaseRunner) recommendVersion() error {
-	ui.Print("Analyzing commits")
+	r.print("Analyzing commits")
 
 	bump := versioning.Recommend(r.parsedCommits)
 
@@ -474,7 +515,9 @@ func (r *releaseRunner) recommendVersion() error {
 	}
 
 	if bump == versioning.BumpNone {
-		fmt.Println(ui.Warning("No releasable commits found — no version bump is required."))
+		if !r.quiet {
+			fmt.Println(ui.Warning("No releasable commits found — no version bump is required."))
+		}
 		if !r.noInteraction {
 			ok, err := ui.Confirm("Continue anyway?", "A release will be created at the same version.")
 			if err != nil {
@@ -493,8 +536,10 @@ func (r *releaseRunner) recommendVersion() error {
 		versioning.BumpMajor: "major",
 	}[bump]
 
-	fmt.Printf("Current version : %s\nRecommended bump: %s\nNext version    : %s\n",
-		r.currentVersion.String(), bumpLabel, r.nextVersion.String())
+	if !r.quiet {
+		fmt.Printf("Current version : %s\nRecommended bump: %s\nNext version    : %s\n",
+			r.currentVersion.String(), bumpLabel, r.nextVersion.String())
+	}
 	return nil
 }
 
@@ -519,7 +564,7 @@ func (r *releaseRunner) confirmVersion() error {
 }
 
 func (r *releaseRunner) createReleaseBranch() error {
-	ui.Print("Creating release branch")
+	r.print("Creating release branch")
 
 	if tmpl := r.cfg.Git.ReleaseBranchTemplate; tmpl != "" {
 		r.releaseBranch = strings.NewReplacer(
@@ -529,11 +574,15 @@ func (r *releaseRunner) createReleaseBranch() error {
 	} else {
 		r.releaseBranch = deriveReleaseBranch(r.cfg.Git.DevelopmentBranch, r.nextVersion.String())
 	}
-	fmt.Printf("Release branch: %s\n", r.releaseBranch)
+	if !r.quiet {
+		fmt.Printf("Release branch: %s\n", r.releaseBranch)
+	}
 	r.vprintf("Base branch: %s\n", r.cfg.Git.DevelopmentBranch)
 
 	if r.dryRun {
-		fmt.Printf("[dry-run] would create branch %s from %s\n", r.releaseBranch, r.cfg.Git.DevelopmentBranch)
+		if !r.quiet {
+			fmt.Printf("[dry-run] would create branch %s from %s\n", r.releaseBranch, r.cfg.Git.DevelopmentBranch)
+		}
 		return nil
 	}
 
@@ -560,10 +609,12 @@ func deriveReleaseBranch(devBranch, version string) string {
 }
 
 func (r *releaseRunner) mergeMainIntoRelease() error {
-	ui.Print("Merging main into release")
+	r.print("Merging main into release")
 
 	if r.dryRun {
-		fmt.Printf("[dry-run] would merge %s into %s\n", r.cfg.Git.DefaultBranch, r.releaseBranch)
+		if !r.quiet {
+			fmt.Printf("[dry-run] would merge %s into %s\n", r.cfg.Git.DefaultBranch, r.releaseBranch)
+		}
 		return nil
 	}
 
@@ -581,7 +632,9 @@ func (r *releaseRunner) mergeMainIntoRelease() error {
 }
 
 func (r *releaseRunner) resolveConflicts(conflicted []string) error {
-	fmt.Println(ui.Warning(fmt.Sprintf("%d conflicted file(s):\n  %s", len(conflicted), strings.Join(conflicted, "\n  "))))
+	if !r.quiet {
+		fmt.Println(ui.Warning(fmt.Sprintf("%d conflicted file(s):\n  %s", len(conflicted), strings.Join(conflicted, "\n  "))))
+	}
 
 	ok, err := ui.Confirm(
 		"Auto-resolve conflicts?",
@@ -615,7 +668,7 @@ func (r *releaseRunner) trackerCreateVersion() error {
 	if r.trackerProvider == nil {
 		return nil
 	}
-	ui.Print("Tracker version")
+	r.print("Tracker version")
 
 	versions, err := r.trackerProvider.ListVersions()
 	if err != nil {
@@ -652,7 +705,9 @@ func (r *releaseRunner) trackerCreateVersion() error {
 	}
 
 	if r.dryRun {
-		fmt.Printf("[dry-run] would create tracker version %q\n", r.nextVersion.String())
+		if !r.quiet {
+			fmt.Printf("[dry-run] would create tracker version %q\n", r.nextVersion.String())
+		}
 		return nil
 	}
 
@@ -686,9 +741,11 @@ func (r *releaseRunner) trackerAssignTickets() error {
 		return nil
 	}
 
-	ui.Print(fmt.Sprintf("Found %d ticket(s) referenced in commits", len(resolved)))
-	for _, ref := range resolved {
-		fmt.Printf("  %-14s  %-12s  %s\n", ref.Ref, ref.State, ref.Title)
+	r.print(fmt.Sprintf("Found %d ticket(s) referenced in commits", len(resolved)))
+	if !r.quiet {
+		for _, ref := range resolved {
+			fmt.Printf("  %-14s  %-12s  %s\n", ref.Ref, ref.State, ref.Title)
+		}
 	}
 
 	if !r.noInteraction {
@@ -703,7 +760,9 @@ func (r *releaseRunner) trackerAssignTickets() error {
 	}
 
 	if r.dryRun {
-		fmt.Printf("[dry-run] would assign %d ticket(s) to tracker version %q\n", len(resolved), r.nextVersion.String())
+		if !r.quiet {
+			fmt.Printf("[dry-run] would assign %d ticket(s) to tracker version %q\n", len(resolved), r.nextVersion.String())
+		}
 		return nil
 	}
 
@@ -718,7 +777,7 @@ func (r *releaseRunner) trackerAssignTickets() error {
 }
 
 func (r *releaseRunner) updateChangelog() error {
-	ui.Print("Updating changelog")
+	r.print("Updating changelog")
 
 	if !r.cfg.Changelog.Enabled {
 		r.vprintf("Disabled — skipping\n")
@@ -730,7 +789,9 @@ func (r *releaseRunner) updateChangelog() error {
 	entry := versioning.ChangelogFromCommits(r.nextVersion.String(), time.Now(), r.parsedCommits)
 
 	if r.dryRun {
-		fmt.Printf("[dry-run] would prepend changelog entry for %s to %s\n", r.nextVersion.String(), changelogPath)
+		if !r.quiet {
+			fmt.Printf("[dry-run] would prepend changelog entry for %s to %s\n", r.nextVersion.String(), changelogPath)
+		}
 		return nil
 	}
 
@@ -742,11 +803,13 @@ func (r *releaseRunner) updateChangelog() error {
 }
 
 func (r *releaseRunner) applySubstitutions() error {
-	ui.Print("Applying version substitutions")
+	r.print("Applying version substitutions")
 	r.vprintf("Working directory: %s\n", r.workingDir)
 
 	if r.dryRun {
-		fmt.Printf("[dry-run] would substitute placeholders in %s\n", r.workingDir)
+		if !r.quiet {
+			fmt.Printf("[dry-run] would substitute placeholders in %s\n", r.workingDir)
+		}
 		return nil
 	}
 
@@ -878,7 +941,7 @@ func (r *releaseRunner) runSecretScan() error {
 	if !r.cfg.Tasks.SecretScanning {
 		return nil
 	}
-	ui.Print("Scanning for secrets")
+	r.print("Scanning for secrets")
 	return tasks.RunSecretScan(r.workingDir, r.verbose)
 }
 
@@ -894,7 +957,7 @@ func (r *releaseRunner) runTasks(label string, tasks []config.TaskRef) error {
 	if len(tasks) == 0 {
 		return nil
 	}
-	ui.Print("Running " + label + " tasks")
+	r.print("Running " + label + " tasks")
 	for _, ref := range tasks {
 		pm, script := config.ParseTaskRef(ref)
 		if pm == "" {
@@ -904,7 +967,9 @@ func (r *releaseRunner) runTasks(label string, tasks []config.TaskRef) error {
 			return fmt.Errorf("cannot run %s task %q: no package manager detected", label, script)
 		}
 
-		fmt.Printf("Running %s task: %s run %s\n", label, pm, script)
+		if !r.quiet {
+			fmt.Printf("Running %s task: %s run %s\n", label, pm, script)
+		}
 		if r.dryRun {
 			continue
 		}
@@ -921,9 +986,9 @@ func (r *releaseRunner) runTasks(label string, tasks []config.TaskRef) error {
 }
 
 func (r *releaseRunner) reviewGate() error {
-	ui.Print("Review gate")
+	r.print("Review gate")
 
-	if len(r.changedFiles) > 0 {
+	if !r.quiet && len(r.changedFiles) > 0 {
 		fmt.Println("\nModified files:")
 		for _, f := range r.changedFiles {
 			rel, _ := filepath.Rel(r.repoRoot, f)
@@ -955,7 +1020,7 @@ func (r *releaseRunner) reviewGate() error {
 }
 
 func (r *releaseRunner) commitRelease() error {
-	ui.Print("Committing release")
+	r.print("Committing release")
 
 	var subject string
 	if r.singleBranch {
@@ -968,7 +1033,9 @@ func (r *releaseRunner) commitRelease() error {
 	r.vprintf("Commit: %s\n", subject)
 
 	if r.dryRun {
-		fmt.Printf("[dry-run] would commit on %s: %q\n", r.releaseBranch, subject)
+		if !r.quiet {
+			fmt.Printf("[dry-run] would commit on %s: %q\n", r.releaseBranch, subject)
+		}
 		return nil
 	}
 
@@ -982,11 +1049,13 @@ func (r *releaseRunner) commitRelease() error {
 }
 
 func (r *releaseRunner) tagRelease() error {
-	ui.Print("Tagging release")
+	r.print("Tagging release")
 	r.vprintf("Tag: %s\n", r.tag)
 
 	if r.dryRun {
-		fmt.Printf("[dry-run] would create tag %s on release branch HEAD\n", r.tag)
+		if !r.quiet {
+			fmt.Printf("[dry-run] would create tag %s on release branch HEAD\n", r.tag)
+		}
 		return nil
 	}
 
@@ -998,11 +1067,13 @@ func (r *releaseRunner) tagRelease() error {
 }
 
 func (r *releaseRunner) mergeIntoMain() error {
-	ui.Print("Merging into main")
+	r.print("Merging into main")
 	r.vprintf("Target branch: %s\n", r.cfg.Git.DefaultBranch)
 
 	if r.dryRun {
-		fmt.Printf("[dry-run] would merge %s into %s\n", r.releaseBranch, r.cfg.Git.DefaultBranch)
+		if !r.quiet {
+			fmt.Printf("[dry-run] would merge %s into %s\n", r.releaseBranch, r.cfg.Git.DefaultBranch)
+		}
 		return nil
 	}
 
@@ -1046,10 +1117,12 @@ func (r *releaseRunner) verifySquashCommitFiles() error {
 	if len(outsideFiles) == 0 {
 		return nil
 	}
-	fmt.Println(ui.Warning(fmt.Sprintf(
-		"Squash commit includes %d file(s) outside the working directory:\n  %s",
-		len(outsideFiles), strings.Join(outsideFiles, "\n  "),
-	)))
+	if !r.quiet {
+		fmt.Println(ui.Warning(fmt.Sprintf(
+			"Squash commit includes %d file(s) outside the working directory:\n  %s",
+			len(outsideFiles), strings.Join(outsideFiles, "\n  "),
+		)))
+	}
 	ok, err := ui.Confirm("Continue with these files in the release commit?", "")
 	if err != nil {
 		return err
@@ -1061,11 +1134,13 @@ func (r *releaseRunner) verifySquashCommitFiles() error {
 }
 
 func (r *releaseRunner) mergeIntoDev() error {
-	ui.Print("Merging into dev")
+	r.print("Merging into dev")
 	r.vprintf("Target branch: %s\n", r.cfg.Git.DevelopmentBranch)
 
 	if r.dryRun {
-		fmt.Printf("[dry-run] would merge %s into %s\n", r.releaseBranch, r.cfg.Git.DevelopmentBranch)
+		if !r.quiet {
+			fmt.Printf("[dry-run] would merge %s into %s\n", r.releaseBranch, r.cfg.Git.DevelopmentBranch)
+		}
 		return nil
 	}
 
@@ -1079,11 +1154,13 @@ func (r *releaseRunner) mergeIntoDev() error {
 }
 
 func (r *releaseRunner) cleanupReleaseBranch() error {
-	ui.Print("Cleaning up release branch")
+	r.print("Cleaning up release branch")
 	r.vprintf("Branch: %s\n", r.releaseBranch)
 
 	if r.dryRun {
-		fmt.Printf("[dry-run] would delete branch %s\n", r.releaseBranch)
+		if !r.quiet {
+			fmt.Printf("[dry-run] would delete branch %s\n", r.releaseBranch)
+		}
 		return nil
 	}
 
@@ -1092,13 +1169,15 @@ func (r *releaseRunner) cleanupReleaseBranch() error {
 		return fmt.Errorf("switching to %s before branch deletion: %w", r.cfg.Git.DefaultBranch, err)
 	}
 	if err := r.git.DeleteBranch(r.releaseBranch); err != nil {
-		fmt.Println(ui.Warning(fmt.Sprintf("Could not delete release branch %s: %v", r.releaseBranch, err)))
+		if !r.quiet {
+			fmt.Println(ui.Warning(fmt.Sprintf("Could not delete release branch %s: %v", r.releaseBranch, err)))
+		}
 	}
 	return nil
 }
 
 func (r *releaseRunner) push() error {
-	ui.Print("Pushing to remote")
+	r.print("Pushing to remote")
 	r.vprintf("Remote: %s\n", r.cfg.Git.Remote)
 
 	// Local release is done — disable rollback from this point.
@@ -1136,9 +1215,11 @@ func (r *releaseRunner) push() error {
 func (r *releaseRunner) pushBranches() error {
 	remote := r.cfg.Git.Remote
 	if r.dryRun {
-		fmt.Printf("[dry-run] would push %s to %s\n", r.cfg.Git.DefaultBranch, remote)
-		if !r.singleBranch {
-			fmt.Printf("[dry-run] would push %s to %s\n", r.cfg.Git.DevelopmentBranch, remote)
+		if !r.quiet {
+			fmt.Printf("[dry-run] would push %s to %s\n", r.cfg.Git.DefaultBranch, remote)
+			if !r.singleBranch {
+				fmt.Printf("[dry-run] would push %s to %s\n", r.cfg.Git.DevelopmentBranch, remote)
+			}
 		}
 		return nil
 	}
@@ -1161,7 +1242,9 @@ func (r *releaseRunner) pushBranches() error {
 func (r *releaseRunner) pushTag() error {
 	remote := r.cfg.Git.Remote
 	if r.dryRun {
-		fmt.Printf("[dry-run] would push tag %s to %s\n", r.tag, remote)
+		if !r.quiet {
+			fmt.Printf("[dry-run] would push tag %s to %s\n", r.tag, remote)
+		}
 		return nil
 	}
 
@@ -1207,11 +1290,15 @@ func (r *releaseRunner) pushToExtraRemotes(ref string) error {
 
 	for _, rem := range selected {
 		if r.dryRun {
-			fmt.Printf("[dry-run] would push %s to %s\n", ref, rem)
+			if !r.quiet {
+				fmt.Printf("[dry-run] would push %s to %s\n", ref, rem)
+			}
 			continue
 		}
 		if err := r.git.Push(rem, ref); err != nil {
-			fmt.Println(ui.Warning(fmt.Sprintf("Could not push %s to %s: %v", ref, rem, err)))
+			if !r.quiet {
+				fmt.Println(ui.Warning(fmt.Sprintf("Could not push %s to %s: %v", ref, rem, err)))
+			}
 		}
 	}
 	return nil
@@ -1235,7 +1322,9 @@ func (r *releaseRunner) trackerCloseVersion() error {
 	}
 
 	if r.dryRun {
-		fmt.Printf("[dry-run] would close tracker version %q\n", r.nextVersion.String())
+		if !r.quiet {
+			fmt.Printf("[dry-run] would close tracker version %q\n", r.nextVersion.String())
+		}
 		return nil
 	}
 
@@ -1254,7 +1343,9 @@ func (r *releaseRunner) scmCreateRelease() error {
 	body := entry.Render()
 
 	if r.dryRun {
-		fmt.Printf("[dry-run] would create SCM release for %s\n", r.tag)
+		if !r.quiet {
+			fmt.Printf("[dry-run] would create SCM release for %s\n", r.tag)
+		}
 		return nil
 	}
 
@@ -1276,7 +1367,9 @@ func (r *releaseRunner) scmCreateRelease() error {
 		return fmt.Errorf("creating SCM release: %w", err)
 	}
 	r.scmReleaseURL = releaseURL
-	fmt.Printf("Release published: %s\n", releaseURL)
+	if !r.quiet {
+		fmt.Printf("Release published: %s\n", releaseURL)
+	}
 	return nil
 }
 
@@ -1285,7 +1378,9 @@ func (r *releaseRunner) sendNotifications() {
 		return
 	}
 	if r.dryRun {
-		fmt.Println("[dry-run] would send release notifications")
+		if !r.quiet {
+			fmt.Println("[dry-run] would send release notifications")
+		}
 		return
 	}
 
@@ -1296,12 +1391,15 @@ func (r *releaseRunner) sendNotifications() {
 		Version: r.nextVersion.String(),
 		URL:     r.scmReleaseURL,
 		Body:    entry.Render(),
-	}); err != nil {
+	}); err != nil && !r.quiet {
 		fmt.Printf("Warning: notification error: %s\n", err)
 	}
 }
 
 func (r *releaseRunner) printSummary() {
+	if r.quiet {
+		return
+	}
 	mode := "Git Flow"
 	if r.singleBranch {
 		mode = "single-branch"

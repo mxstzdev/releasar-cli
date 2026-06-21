@@ -23,7 +23,7 @@ func init() {
 
 var licensesCmd = &cobra.Command{
 	Use:   "licenses",
-	Short: "Display the releasar license and all bundled third-party licenses",
+	Short: "Display the license & all bundled third-party licenses",
 	RunE:  runLicenses,
 }
 

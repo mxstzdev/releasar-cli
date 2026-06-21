@@ -7,10 +7,10 @@ import (
 )
 
 var (
-	flagDryRun      bool
-	flagNoInteraction bool
-	flagVerbosity   int
-	appVersion   string
+	flagVerbosity  int
+	flagWorkingDir string
+	flagQuiet      bool
+	appVersion     string
 )
 
 var rootCmd = &cobra.Command{
@@ -31,7 +31,7 @@ func Execute(version string) {
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "walk through the flow without writing anything")
-	rootCmd.PersistentFlags().BoolVarP(&flagNoInteraction, "no-interaction", "n", false, "skip interactive confirmations")
 	rootCmd.PersistentFlags().CountVarP(&flagVerbosity, "verbose", "v", "detailed phase output (-v); debug logging to file (-vv)")
+	rootCmd.PersistentFlags().StringVarP(&flagWorkingDir, "working-dir", "d", "", "set working directory")
+	rootCmd.PersistentFlags().BoolVarP(&flagQuiet, "quiet", "q", false, "suppress all output except errors")
 }
