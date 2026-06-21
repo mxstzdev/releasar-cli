@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mxstzdev/releasar-cli/internal/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +16,7 @@ func newTestTelegram(t *testing.T, mux *http.ServeMux) *telegram {
 	t.Helper()
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	tg, err := newTelegram(TelegramConfig{Token: "test-token", ChatID: "-100123"})
+	tg, err := newTelegram(TelegramConfig{Token: "test-token", ChatID: "-100123"}, log.Nop())
 	require.NoError(t, err)
 	tg.baseURL = srv.URL
 	return tg

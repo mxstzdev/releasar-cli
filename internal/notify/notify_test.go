@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/mxstzdev/releasar-cli/internal/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +20,7 @@ func (f *fakeNotifier) Notify(event Event) error {
 }
 
 func TestBuild_ReturnsNilWhenNoChannels(t *testing.T) {
-	n, err := Build(Config{})
+	n, err := Build(Config{}, log.Nop())
 	require.NoError(t, err)
 	assert.Nil(t, n)
 }
@@ -86,7 +87,7 @@ func TestEmail_RequiresConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := newEmail(tt.cfg)
+			_, err := newEmail(tt.cfg, log.Nop())
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantMsg)
 		})
@@ -113,7 +114,7 @@ func TestTelegram_RequiresConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := newTelegram(tt.cfg)
+			_, err := newTelegram(tt.cfg, log.Nop())
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantMsg)
 		})
@@ -121,13 +122,13 @@ func TestTelegram_RequiresConfig(t *testing.T) {
 }
 
 func TestWebhook_RequiresURL(t *testing.T) {
-	_, err := newWebhook(WebhookConfig{})
+	_, err := newWebhook(WebhookConfig{}, log.Nop())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "url")
 }
 
 func TestSlack_RequiresWebhookURL(t *testing.T) {
-	_, err := newSlack(SlackConfig{})
+	_, err := newSlack(SlackConfig{}, log.Nop())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "webhook URL")
 }

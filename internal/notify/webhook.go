@@ -6,15 +6,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/mxstzdev/releasar-cli/internal/log"
 )
 
 type webhook struct {
 	url     string
 	headers map[string]string
 	http    *http.Client
+	log     *log.Channel
 }
 
-func newWebhook(cfg WebhookConfig) (*webhook, error) {
+func newWebhook(cfg WebhookConfig, log *log.Channel) (*webhook, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("url is required")
 	}
@@ -22,6 +25,7 @@ func newWebhook(cfg WebhookConfig) (*webhook, error) {
 		url:     cfg.URL,
 		headers: cfg.Headers,
 		http:    &http.Client{},
+		log:     log,
 	}, nil
 }
 
@@ -55,13 +59,16 @@ func (w *webhook) Notify(event Event) error {
 
 	resp, err := w.http.Do(req)
 	if err != nil {
+		w.log.Error("Webhook request failed", map[string]any{"url": w.url, "error": err})
 		return fmt.Errorf("sending webhook: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		w.log.Error("Webhook error", map[string]any{"url": w.url, "status": resp.StatusCode})
 		return fmt.Errorf("webhook returned %d: %s", resp.StatusCode, body)
 	}
+	w.log.Debug("Webhook notification sent", map[string]any{"url": w.url, "status": resp.StatusCode})
 	return nil
 }

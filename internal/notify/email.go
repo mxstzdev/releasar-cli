@@ -4,13 +4,16 @@ import (
 	"fmt"
 	"net/smtp"
 	"strings"
+
+	"github.com/mxstzdev/releasar-cli/internal/log"
 )
 
 type email struct {
 	cfg EmailConfig
+	log *log.Channel
 }
 
-func newEmail(cfg EmailConfig) (*email, error) {
+func newEmail(cfg EmailConfig, log *log.Channel) (*email, error) {
 	if cfg.SMTPHost == "" {
 		return nil, fmt.Errorf("smtpHost is required")
 	}
@@ -23,7 +26,7 @@ func newEmail(cfg EmailConfig) (*email, error) {
 	if cfg.SMTPPort == 0 {
 		cfg.SMTPPort = 587
 	}
-	return &email{cfg: cfg}, nil
+	return &email{cfg: cfg, log: log}, nil
 }
 
 func (e *email) Notify(event Event) error {
@@ -51,8 +54,10 @@ func (e *email) Notify(event Event) error {
 	}
 
 	if err := smtp.SendMail(addr, auth, e.cfg.From, e.cfg.To, []byte(msg)); err != nil {
+		e.log.Error("Email notification failed", map[string]any{"addr": addr, "error": err})
 		return fmt.Errorf("sending email: %w", err)
 	}
+	e.log.Debug("Email notification sent", map[string]any{"addr": addr, "recipients": len(e.cfg.To)})
 	return nil
 }
 

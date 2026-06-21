@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/mxstzdev/releasar-cli/internal/log"
 )
 
 const telegramBaseURL = "https://api.telegram.org"
@@ -16,9 +18,10 @@ type telegram struct {
 	chatID  string
 	baseURL string
 	http    *http.Client
+	log     *log.Channel
 }
 
-func newTelegram(cfg TelegramConfig) (*telegram, error) {
+func newTelegram(cfg TelegramConfig, log *log.Channel) (*telegram, error) {
 	if cfg.Token == "" {
 		return nil, fmt.Errorf("token is required")
 	}
@@ -30,6 +33,7 @@ func newTelegram(cfg TelegramConfig) (*telegram, error) {
 		chatID:  cfg.ChatID,
 		baseURL: telegramBaseURL,
 		http:    &http.Client{},
+		log:     log,
 	}, nil
 }
 
@@ -69,13 +73,16 @@ func (t *telegram) Notify(event Event) error {
 
 	resp, err := t.http.Do(req)
 	if err != nil {
+		t.log.Error("Telegram request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return fmt.Errorf("sending telegram message: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
+		t.log.Error("Telegram API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return fmt.Errorf("telegram API returned %d: %s", resp.StatusCode, body)
 	}
+	t.log.Debug("Telegram notification sent", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 	return nil
 }

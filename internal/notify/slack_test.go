@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mxstzdev/releasar-cli/internal/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,7 +17,7 @@ func newTestSlack(t *testing.T, mux *http.ServeMux) (*slack, string) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	webhookURL := srv.URL + "/webhook"
-	s, err := newSlack(SlackConfig{WebhookURL: webhookURL})
+	s, err := newSlack(SlackConfig{WebhookURL: webhookURL}, log.Nop())
 	require.NoError(t, err)
 	return s, webhookURL
 }

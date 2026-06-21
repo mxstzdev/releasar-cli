@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mxstzdev/releasar-cli/internal/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +16,7 @@ func newTestWebhook(t *testing.T, mux *http.ServeMux, headers map[string]string)
 	t.Helper()
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	w, err := newWebhook(WebhookConfig{URL: srv.URL + "/hook", Headers: headers})
+	w, err := newWebhook(WebhookConfig{URL: srv.URL + "/hook", Headers: headers}, log.Nop())
 	require.NoError(t, err)
 	return w
 }

@@ -3,6 +3,8 @@ package notify
 import (
 	"fmt"
 	"strings"
+
+	"github.com/mxstzdev/releasar-cli/internal/log"
 )
 
 // EventType classifies a notification event.
@@ -27,11 +29,11 @@ type Notifier interface {
 
 // Build constructs a Notifier from cfg, fanning out to all active channels.
 // Returns nil if no channels are configured.
-func Build(cfg Config) (Notifier, error) {
+func Build(cfg Config, log *log.Channel) (Notifier, error) {
 	var channels []Notifier
 
 	if cfg.Email != nil {
-		ch, err := newEmail(*cfg.Email)
+		ch, err := newEmail(*cfg.Email, log)
 		if err != nil {
 			return nil, fmt.Errorf("email notifier: %w", err)
 		}
@@ -39,7 +41,7 @@ func Build(cfg Config) (Notifier, error) {
 	}
 
 	if cfg.Telegram != nil {
-		ch, err := newTelegram(*cfg.Telegram)
+		ch, err := newTelegram(*cfg.Telegram, log)
 		if err != nil {
 			return nil, fmt.Errorf("telegram notifier: %w", err)
 		}
@@ -47,11 +49,11 @@ func Build(cfg Config) (Notifier, error) {
 	}
 
 	if cfg.Desktop {
-		channels = append(channels, &desktop{})
+		channels = append(channels, newDesktop(log))
 	}
 
 	if cfg.Slack != nil {
-		ch, err := newSlack(*cfg.Slack)
+		ch, err := newSlack(*cfg.Slack, log)
 		if err != nil {
 			return nil, fmt.Errorf("slack notifier: %w", err)
 		}
@@ -59,7 +61,7 @@ func Build(cfg Config) (Notifier, error) {
 	}
 
 	if cfg.Webhook != nil {
-		ch, err := newWebhook(*cfg.Webhook)
+		ch, err := newWebhook(*cfg.Webhook, log)
 		if err != nil {
 			return nil, fmt.Errorf("webhook notifier: %w", err)
 		}

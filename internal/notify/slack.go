@@ -6,18 +6,21 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/mxstzdev/releasar-cli/internal/log"
 )
 
 type slack struct {
 	webhookURL string
 	http       *http.Client
+	log        *log.Channel
 }
 
-func newSlack(cfg SlackConfig) (*slack, error) {
+func newSlack(cfg SlackConfig, log *log.Channel) (*slack, error) {
 	if cfg.WebhookURL == "" {
 		return nil, fmt.Errorf("webhook URL is required")
 	}
-	return &slack{webhookURL: cfg.WebhookURL, http: &http.Client{}}, nil
+	return &slack{webhookURL: cfg.WebhookURL, http: &http.Client{}, log: log}, nil
 }
 
 func (s *slack) Notify(event Event) error {
@@ -76,13 +79,16 @@ func (s *slack) Notify(event Event) error {
 
 	resp, err := s.http.Do(req)
 	if err != nil {
+		s.log.Error("Slack request failed", map[string]any{"error": err})
 		return fmt.Errorf("sending slack message: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
+		s.log.Error("Slack API error", map[string]any{"status": resp.StatusCode})
 		return fmt.Errorf("slack webhook returned %d: %s", resp.StatusCode, body)
 	}
+	s.log.Debug("Slack notification sent", map[string]any{"status": resp.StatusCode})
 	return nil
 }
