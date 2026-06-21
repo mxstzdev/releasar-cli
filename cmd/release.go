@@ -41,18 +41,26 @@ var releaseCmd = &cobra.Command{
 		if len(args) > 0 {
 			bumpArg = args[0]
 		}
-		return newReleaseRunner(flagDryRun, flagNoInteraction, flagVerbosity, flagVersion, bumpArg).run()
+		r := &releaseRunner{
+			dryRun:        flagDryRun,
+			noInteraction: flagNoInteraction,
+			verbose:       flagVerbosity >= 1,
+			debug:         flagVerbosity >= 2,
+			versionFlag:   flagVersion,
+			bumpArg:       bumpArg,
+		}
+		return r.run()
 	},
 }
 
 type releaseRunner struct {
-	cfg     *config.Config
-	git     *git.Client
-	log     *log.Channel
-	dryRun  bool
+	cfg           *config.Config
+	git           *git.Client
+	log           *log.Channel
+	dryRun        bool
 	noInteraction bool
-	verbose bool
-	debug   bool
+	verbose       bool
+	debug         bool
 
 	versionFlag string
 	bumpArg     string
@@ -63,11 +71,11 @@ type releaseRunner struct {
 	mainHeadSHA    string
 	devHeadSHA     string
 
-	scmProvider     scm.Provider     // nil if no SCM provider is configured
-	trackerProvider tracker.Tracker  // nil if no tracker is configured
+	scmProvider      scm.Provider    // nil if no SCM provider is configured
+	trackerProvider  tracker.Tracker // nil if no tracker is configured
 	trackerVersionID string          // ID of the created or selected tracker version
-	notifier        notify.Notifier  // nil if no channels are configured
-	scmReleaseURL   string           // URL returned by scmCreateRelease; forwarded to notifications
+	notifier         notify.Notifier // nil if no channels are configured
+	scmReleaseURL    string          // URL returned by scmCreateRelease; forwarded to notifications
 
 	singleBranch         bool
 	releaseBranchCreated bool
@@ -81,22 +89,6 @@ type releaseRunner struct {
 	releaseBranch  string
 	tag            string
 	changedFiles   []string
-}
-
-func newReleaseRunner(dryRun, yes bool, verbosity int, versionFlag, bumpArg string) *releaseRunner {
-	if verbosity >= 2 {
-		lvl := zerolog.DebugLevel
-		log.Init(log.Config{Level: &lvl})
-	}
-	return &releaseRunner{
-		dryRun:      dryRun,
-		noInteraction: yes,
-		verbose:     verbosity >= 1,
-		debug:       verbosity >= 2,
-		versionFlag: versionFlag,
-		bumpArg:     bumpArg,
-		log:         log.Get("release"),
-	}
 }
 
 func (r *releaseRunner) vprintf(format string, args ...any) {
@@ -226,8 +218,9 @@ func bumpKindFromArg(arg string) versioning.BumpKind {
 
 func (r *releaseRunner) initialize() error {
 	ui.Print("Initializing")
-	if r.debug {
-		r.vprintf("Debug log: %s\n", filepath.Join("var/log/releasar", "releasar.log"))
+
+	if _, err := exec.LookPath("git"); err != nil {
+		return fmt.Errorf("git is not installed or not in PATH")
 	}
 
 	cwd, err := os.Getwd()
@@ -236,15 +229,11 @@ func (r *releaseRunner) initialize() error {
 	}
 	r.workingDir = cwd
 
-	tmpGit, err := git.New(cwd, git.Config{}, r.log)
+	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
-		return fmt.Errorf("initialising git: %w", err)
+		return fmt.Errorf("not inside a git repository")
 	}
-	repoRoot, err := tmpGit.RevParse("--show-toplevel")
-	if err != nil {
-		return fmt.Errorf("detecting repo root: %w", err)
-	}
-	r.repoRoot = repoRoot
+	r.repoRoot = strings.TrimSpace(string(out))
 
 	if r.workingDir != r.repoRoot {
 		fmt.Printf("Working directory: %s\nRepo root:        %s\n", r.workingDir, r.repoRoot)
@@ -267,6 +256,18 @@ func (r *releaseRunner) initialize() error {
 	}
 	r.cfg = cfg
 
+	logCfg := log.Config{
+		Directory: cfg.Log.Directory,
+		Filename:  cfg.Log.Filename,
+	}
+	if r.debug {
+		lvl := zerolog.DebugLevel
+		logCfg.Level = &lvl
+		r.vprintf("Debug log: %s\n", filepath.Join(cfg.Log.Directory, cfg.Log.Filename))
+	}
+	log.Init(logCfg)
+	r.log = log.Get("release")
+
 	r.singleBranch = cfg.Git.DefaultBranch == cfg.Git.DevelopmentBranch
 
 	gitCfg := git.Config{
@@ -274,7 +275,7 @@ func (r *releaseRunner) initialize() error {
 		DevelopmentBranch: cfg.Git.DevelopmentBranch,
 		TagPrefix:         cfg.Git.TagPrefix,
 	}
-	r.git, err = git.New(r.repoRoot, gitCfg, r.log)
+	r.git, err = git.New(r.repoRoot, gitCfg, log.Get("git"))
 	if err != nil {
 		return fmt.Errorf("initialising git client: %w", err)
 	}
@@ -378,7 +379,7 @@ func (r *releaseRunner) initialize() error {
 }
 
 func (r *releaseRunner) detectVersion() error {
-	ui.Print("Detecting version")
+	ui.Print("Detecting release version")
 
 	branch, err := r.git.CurrentBranch()
 	if err != nil {
@@ -411,7 +412,7 @@ func (r *releaseRunner) detectVersion() error {
 
 	if latestTag == "" {
 		initial, err := ui.Input(
-			"No previous tag found",
+			"No previous tag reference found",
 			"Enter the initial version",
 			"0.1.0",
 		)
