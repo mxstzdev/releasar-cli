@@ -1,6 +1,10 @@
 package tracker
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/mxstzdev/releasar-cli/internal/log"
+)
 
 // Version represents a named release version or milestone in an issue tracker.
 type Version struct {
@@ -49,20 +53,20 @@ type Config struct {
 }
 
 // New returns a Tracker for the given provider name.
-func New(provider string, cfg Config) (Tracker, error) {
+func New(provider string, cfg Config, log *log.Channel) (Tracker, error) {
 	switch provider {
 	case "github":
-		return newGitHub(cfg), nil
+		return newGitHub(cfg, log), nil
 	case "gitea":
-		return newGitea(cfg, giteaDefaultBaseURL)
+		return newGitea(cfg, giteaDefaultBaseURL, log)
 	case "forgejo":
-		return newGitea(cfg, "")
+		return newGitea(cfg, "", log)
 	case "codeberg":
-		return newGitea(cfg, codebergBaseURL)
+		return newGitea(cfg, codebergBaseURL, log)
 	case "jira":
-		return newJira(cfg)
+		return newJira(cfg, log)
 	case "openproject":
-		return newOpenProject(cfg)
+		return newOpenProject(cfg, log)
 	default:
 		return nil, fmt.Errorf("unknown tracker provider %q", provider)
 	}

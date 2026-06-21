@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mxstzdev/releasar-cli/internal/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -14,7 +15,7 @@ func newTestGitHub(t *testing.T, mux *http.ServeMux) *gitHub {
 	t.Helper()
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return newGitHub(Config{Host: srv.URL, Token: "test-token", Owner: "owner", Repo: "repo"})
+	return newGitHub(Config{Host: srv.URL, Token: "test-token", Owner: "owner", Repo: "repo"}, log.Nop())
 }
 
 func TestGitHub_ListVersions(t *testing.T) {

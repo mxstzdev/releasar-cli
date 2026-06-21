@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mxstzdev/releasar-cli/internal/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -14,7 +15,7 @@ func newTestGitea(t *testing.T, mux *http.ServeMux) *giteaTracker {
 	t.Helper()
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	g, err := newGitea(Config{Host: srv.URL, Token: "test-token", Owner: "owner", Repo: "repo"}, "")
+	g, err := newGitea(Config{Host: srv.URL, Token: "test-token", Owner: "owner", Repo: "repo"}, "", log.Nop())
 	require.NoError(t, err)
 	return g
 }
@@ -211,7 +212,7 @@ func TestGitea_CloseVersion(t *testing.T) {
 }
 
 func TestGitea_RequiresHost(t *testing.T) {
-	_, err := newGitea(Config{Token: "tok", Owner: "o", Repo: "r"}, "")
+	_, err := newGitea(Config{Token: "tok", Owner: "o", Repo: "r"}, "", log.Nop())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tracker.host is required")
 }

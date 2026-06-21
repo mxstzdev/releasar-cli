@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/mxstzdev/releasar-cli/internal/log"
 )
 
 const (
@@ -25,11 +27,12 @@ type giteaTracker struct {
 	owner   string
 	repo    string
 	http    *http.Client
+	log     *log.Channel
 }
 
 var giteaRefPattern = regexp.MustCompile(`^#(\d+)$`)
 
-func newGitea(cfg Config, defaultHost string) (*giteaTracker, error) {
+func newGitea(cfg Config, defaultHost string, log *log.Channel) (*giteaTracker, error) {
 	host := cfg.Host
 	if host == "" {
 		host = defaultHost
@@ -43,6 +46,7 @@ func newGitea(cfg Config, defaultHost string) (*giteaTracker, error) {
 		owner:   cfg.Owner,
 		repo:    cfg.Repo,
 		http:    &http.Client{},
+		log:     log,
 	}, nil
 }
 
@@ -115,6 +119,7 @@ func (g *giteaTracker) CreateVersion(name, description string) (string, error) {
 
 	resp, err := g.http.Do(req)
 	if err != nil {
+		g.log.Error("Gitea milestone request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return "", fmt.Errorf("creating milestone: %w", err)
 	}
 	defer resp.Body.Close()
@@ -124,6 +129,7 @@ func (g *giteaTracker) CreateVersion(name, description string) (string, error) {
 		return "", fmt.Errorf("reading milestone response: %w", err)
 	}
 	if resp.StatusCode != http.StatusCreated {
+		g.log.Error("Gitea API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return "", fmt.Errorf("Gitea API returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -133,6 +139,7 @@ func (g *giteaTracker) CreateVersion(name, description string) (string, error) {
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", fmt.Errorf("parsing milestone response: %w", err)
 	}
+	g.log.Debug("Gitea milestone created", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 	return strconv.FormatInt(result.ID, 10), nil
 }
 
@@ -263,13 +270,16 @@ func (g *giteaTracker) CloseVersion(versionID string) error {
 
 	resp, err := g.http.Do(req)
 	if err != nil {
+		g.log.Error("Gitea milestone close request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return fmt.Errorf("closing milestone: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
+		g.log.Error("Gitea API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return fmt.Errorf("Gitea API returned %d: %s", resp.StatusCode, body)
 	}
+	g.log.Debug("Gitea milestone closed", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 	return nil
 }

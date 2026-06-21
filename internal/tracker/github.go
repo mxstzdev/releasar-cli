@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/mxstzdev/releasar-cli/internal/log"
 )
 
 const githubDefaultBaseURL = "https://api.github.com"
@@ -21,11 +23,12 @@ type gitHub struct {
 	owner   string
 	repo    string
 	http    *http.Client
+	log     *log.Channel
 }
 
 var githubRefPattern = regexp.MustCompile(`^#(\d+)$`)
 
-func newGitHub(cfg Config) *gitHub {
+func newGitHub(cfg Config, log *log.Channel) *gitHub {
 	baseURL := githubDefaultBaseURL
 	if cfg.Host != "" {
 		baseURL = cfg.Host
@@ -36,6 +39,7 @@ func newGitHub(cfg Config) *gitHub {
 		owner:   cfg.Owner,
 		repo:    cfg.Repo,
 		http:    &http.Client{},
+		log:     log,
 	}
 }
 
@@ -110,6 +114,7 @@ func (g *gitHub) CreateVersion(name, description string) (string, error) {
 
 	resp, err := g.http.Do(req)
 	if err != nil {
+		g.log.Error("GitHub milestone request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return "", fmt.Errorf("creating milestone: %w", err)
 	}
 	defer resp.Body.Close()
@@ -119,6 +124,7 @@ func (g *gitHub) CreateVersion(name, description string) (string, error) {
 		return "", fmt.Errorf("reading milestone response: %w", err)
 	}
 	if resp.StatusCode != http.StatusCreated {
+		g.log.Error("GitHub API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return "", fmt.Errorf("GitHub API returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -128,6 +134,7 @@ func (g *gitHub) CreateVersion(name, description string) (string, error) {
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", fmt.Errorf("parsing milestone response: %w", err)
 	}
+	g.log.Debug("GitHub milestone created", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 	return strconv.Itoa(result.Number), nil
 }
 
@@ -260,13 +267,16 @@ func (g *gitHub) CloseVersion(versionID string) error {
 
 	resp, err := g.http.Do(req)
 	if err != nil {
+		g.log.Error("GitHub milestone close request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return fmt.Errorf("closing milestone: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
+		g.log.Error("GitHub API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return fmt.Errorf("GitHub API returned %d: %s", resp.StatusCode, body)
 	}
+	g.log.Debug("GitHub milestone closed", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 	return nil
 }

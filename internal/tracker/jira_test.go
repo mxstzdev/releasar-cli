@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mxstzdev/releasar-cli/internal/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +20,7 @@ func newTestJira(t *testing.T, mux *http.ServeMux) *jira {
 		Token:      "test-token",
 		Email:      "user@example.com",
 		ProjectKey: "PROJ",
-	})
+	}, log.Nop())
 	require.NoError(t, err)
 	return j
 }
@@ -49,7 +50,7 @@ func TestJira_RequiresConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := newJira(tt.cfg)
+			_, err := newJira(tt.cfg, log.Nop())
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantMsg)
 		})

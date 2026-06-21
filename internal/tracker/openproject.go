@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+
+	"github.com/mxstzdev/releasar-cli/internal/log"
 )
 
 // openProject is the OpenProject issue tracker adapter using versions and work packages.
@@ -18,11 +20,12 @@ type openProject struct {
 	token      string
 	projectKey string // numeric project ID
 	http       *http.Client
+	log        *log.Channel
 }
 
 var openProjectRefPattern = regexp.MustCompile(`^#(\d+)$`)
 
-func newOpenProject(cfg Config) (*openProject, error) {
+func newOpenProject(cfg Config, log *log.Channel) (*openProject, error) {
 	if cfg.ProjectKey == "" {
 		return nil, fmt.Errorf("tracker.projectKey is required for OpenProject (numeric project ID)")
 	}
@@ -36,6 +39,7 @@ func newOpenProject(cfg Config) (*openProject, error) {
 		token:      cfg.Token,
 		projectKey: cfg.ProjectKey,
 		http:       &http.Client{},
+		log:        log,
 	}, nil
 }
 
@@ -119,6 +123,7 @@ func (o *openProject) CreateVersion(name, description string) (string, error) {
 
 	resp, err := o.http.Do(req)
 	if err != nil {
+		o.log.Error("OpenProject version request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return "", fmt.Errorf("creating version: %w", err)
 	}
 	defer resp.Body.Close()
@@ -128,6 +133,7 @@ func (o *openProject) CreateVersion(name, description string) (string, error) {
 		return "", fmt.Errorf("reading version response: %w", err)
 	}
 	if resp.StatusCode != http.StatusCreated {
+		o.log.Error("OpenProject API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return "", fmt.Errorf("OpenProject API returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -137,6 +143,7 @@ func (o *openProject) CreateVersion(name, description string) (string, error) {
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", fmt.Errorf("parsing version response: %w", err)
 	}
+	o.log.Debug("OpenProject version created", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 	return fmt.Sprintf("%d", result.ID), nil
 }
 
@@ -329,13 +336,16 @@ func (o *openProject) CloseVersion(versionID string) error {
 
 	resp, err := o.http.Do(req)
 	if err != nil {
+		o.log.Error("OpenProject version close request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return fmt.Errorf("closing version: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
+		o.log.Error("OpenProject API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return fmt.Errorf("OpenProject API returned %d: %s", resp.StatusCode, body)
 	}
+	o.log.Debug("OpenProject version closed", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 	return nil
 }

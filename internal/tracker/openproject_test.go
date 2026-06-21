@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mxstzdev/releasar-cli/internal/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +16,7 @@ func newTestOpenProject(t *testing.T, mux *http.ServeMux) *openProject {
 	t.Helper()
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	op, err := newOpenProject(Config{Host: srv.URL, Token: "test-token", ProjectKey: "42"})
+	op, err := newOpenProject(Config{Host: srv.URL, Token: "test-token", ProjectKey: "42"}, log.Nop())
 	require.NoError(t, err)
 	return op
 }
@@ -40,7 +41,7 @@ func TestOpenProject_RequiresConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := newOpenProject(tt.cfg)
+			_, err := newOpenProject(tt.cfg, log.Nop())
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantMsg)
 		})

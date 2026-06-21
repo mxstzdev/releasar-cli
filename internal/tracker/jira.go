@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+
+	"github.com/mxstzdev/releasar-cli/internal/log"
 )
 
 // jira is the Jira Cloud issue tracker adapter.
@@ -19,11 +21,12 @@ type jira struct {
 	authHeader string
 	projectKey string
 	http       *http.Client
+	log        *log.Channel
 }
 
 var jiraRefPattern = regexp.MustCompile(`^[A-Z][A-Z0-9]*-\d+$`)
 
-func newJira(cfg Config) (*jira, error) {
+func newJira(cfg Config, log *log.Channel) (*jira, error) {
 	if cfg.ProjectKey == "" {
 		return nil, fmt.Errorf("tracker.projectKey is required for Jira")
 	}
@@ -42,6 +45,7 @@ func newJira(cfg Config) (*jira, error) {
 		authHeader: "Basic " + creds,
 		projectKey: cfg.ProjectKey,
 		http:       &http.Client{},
+		log:        log,
 	}, nil
 }
 
@@ -118,6 +122,7 @@ func (j *jira) CreateVersion(name, description string) (string, error) {
 
 	resp, err := j.http.Do(req)
 	if err != nil {
+		j.log.Error("Jira version request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return "", fmt.Errorf("creating version: %w", err)
 	}
 	defer resp.Body.Close()
@@ -127,6 +132,7 @@ func (j *jira) CreateVersion(name, description string) (string, error) {
 		return "", fmt.Errorf("reading version response: %w", err)
 	}
 	if resp.StatusCode != http.StatusCreated {
+		j.log.Error("Jira API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return "", fmt.Errorf("Jira API returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -136,6 +142,7 @@ func (j *jira) CreateVersion(name, description string) (string, error) {
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", fmt.Errorf("parsing version response: %w", err)
 	}
+	j.log.Debug("Jira version created", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 	return result.ID, nil
 }
 
@@ -291,13 +298,16 @@ func (j *jira) CloseVersion(versionID string) error {
 
 	resp, err := j.http.Do(req)
 	if err != nil {
+		j.log.Error("Jira version close request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return fmt.Errorf("closing version: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
+		j.log.Error("Jira API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return fmt.Errorf("Jira API returned %d: %s", resp.StatusCode, body)
 	}
+	j.log.Debug("Jira version closed", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 	return nil
 }
