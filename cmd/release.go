@@ -40,7 +40,7 @@ var releaseCmd = &cobra.Command{
 		if len(args) > 0 {
 			bumpArg = args[0]
 		}
-		return newReleaseRunner(flagDryRun, flagYes, flagVerbosity, flagVersion, bumpArg).run()
+		return newReleaseRunner(flagDryRun, flagNoInteraction, flagVerbosity, flagVersion, bumpArg).run()
 	},
 }
 
@@ -49,7 +49,7 @@ type releaseRunner struct {
 	git     *git.Client
 	log     *log.Channel
 	dryRun  bool
-	yes     bool
+	noInteraction bool
 	verbose bool
 	debug   bool
 
@@ -87,7 +87,7 @@ func newReleaseRunner(dryRun, yes bool, verbosity int, versionFlag, bumpArg stri
 	}
 	return &releaseRunner{
 		dryRun:      dryRun,
-		yes:         yes,
+		noInteraction: yes,
 		verbose:     verbosity >= 1,
 		debug:       verbosity >= 2,
 		versionFlag: versionFlag,
@@ -423,7 +423,7 @@ func (r *releaseRunner) recommendVersion() error {
 
 	if bump == versioning.BumpNone {
 		fmt.Println(ui.Warning("No releasable commits found — no version bump is required."))
-		if !r.yes {
+		if !r.noInteraction {
 			ok, err := ui.Confirm("Continue anyway?", "A release will be created at the same version.")
 			if err != nil {
 				return err
@@ -589,7 +589,7 @@ func (r *releaseRunner) trackerCreateVersion() error {
 		}
 	}
 
-	if !r.yes {
+	if !r.noInteraction {
 		ok, err := ui.Confirm(fmt.Sprintf("Create version %q in issue tracker?", r.nextVersion.String()), "")
 		if err != nil {
 			return err
@@ -639,7 +639,7 @@ func (r *releaseRunner) trackerAssignTickets() error {
 		fmt.Printf("  %-14s  %-12s  %s\n", ref.Ref, ref.State, ref.Title)
 	}
 
-	if !r.yes {
+	if !r.noInteraction {
 		ok, err := ui.Confirm(
 			fmt.Sprintf("Assign %d ticket(s) to version %q?", len(resolved), r.nextVersion.String()), "")
 		if err != nil {
@@ -879,7 +879,7 @@ func (r *releaseRunner) reviewGate() error {
 		}
 	}
 
-	if r.yes || r.dryRun {
+	if r.noInteraction || r.dryRun {
 		return nil
 	}
 
@@ -1170,7 +1170,7 @@ func (r *releaseRunner) trackerCloseVersion() error {
 		return nil
 	}
 
-	if !r.yes {
+	if !r.noInteraction {
 		ok, err := ui.Confirm(
 			fmt.Sprintf("Close version %q in issue tracker?", r.nextVersion.String()),
 			"This will mark the milestone/version as released.")
@@ -1206,7 +1206,7 @@ func (r *releaseRunner) scmCreateRelease() error {
 		return nil
 	}
 
-	if !r.yes {
+	if !r.noInteraction {
 		ok, err := ui.Confirm(
 			"Create SCM release?",
 			fmt.Sprintf("Will publish release %s on %s.", r.tag, r.cfg.SCM.Provider),

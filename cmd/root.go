@@ -7,9 +7,9 @@ import (
 )
 
 var (
-	flagDryRun   bool
-	flagYes      bool
-	flagVerbosity int
+	flagDryRun      bool
+	flagNoInteraction bool
+	flagVerbosity   int
 	appVersion   string
 )
 
@@ -31,6 +31,6 @@ func Execute(version string) {
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "walk through the flow without writing anything")
-	rootCmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "skip interactive confirmations")
+	rootCmd.PersistentFlags().BoolVarP(&flagNoInteraction, "no-interaction", "n", false, "skip interactive confirmations")
 	rootCmd.PersistentFlags().CountVarP(&flagVerbosity, "verbose", "v", "detailed phase output (-v); debug logging to file (-vv)")
 }
