@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      testcontainers:
+        patterns: ["github.com/testcontainers/*"]
+      moby:
+        patterns: ["github.com/moby/*"]
+      charmbracelet:
+        patterns: ["github.com/charmbracelet/*"]
+      golang-x:
+        patterns: ["golang.org/x/*"]
