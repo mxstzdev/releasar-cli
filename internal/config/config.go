@@ -35,6 +35,13 @@ type Config struct {
 	Tasks      TasksConfig
 	Hooks      HooksConfig
 	Notify     NotifyConfig
+	Log        LogConfig
+}
+
+// LogConfig controls where log files are written.
+type LogConfig struct {
+	Directory string // directory for log files; default: "var/log/releasar"
+	Filename  string // log file name; default: "releasar.log"
 }
 
 type GitConfig struct {
@@ -301,6 +308,10 @@ func applyDefaults(raw *rawConfig, pm PackageManagerKind) Config {
 	cfg.Hooks.BeforeRelease = raw.Hooks.BeforeRelease
 	cfg.Hooks.AfterRelease = raw.Hooks.AfterRelease
 
+	// Log
+	cfg.Log.Directory = stringOr(raw.Log.Directory, "var/log/releasar")
+	cfg.Log.Filename = stringOr(raw.Log.Filename, "releasar.log")
+
 	// Notify
 	if raw.Notify.Email != nil {
 		cfg.Notify.Email = &EmailNotifyConfig{
@@ -506,6 +517,13 @@ func mergeRaw(base, overlay *rawConfig) *rawConfig {
 		m.Hooks.AfterRelease = overlay.Hooks.AfterRelease
 	}
 
+	if overlay.Log.Directory != "" {
+		m.Log.Directory = overlay.Log.Directory
+	}
+	if overlay.Log.Filename != "" {
+		m.Log.Filename = overlay.Log.Filename
+	}
+
 	if overlay.Notify.Email != nil {
 		m.Notify.Email = overlay.Notify.Email
 	}
@@ -551,6 +569,7 @@ type rawConfig struct {
 	Tasks      rawTasksConfig      `json:"tasks"`
 	Hooks      rawHooksConfig      `json:"hooks"`
 	Notify     rawNotifyConfig     `json:"notify"`
+	Log        rawLogConfig        `json:"log"`
 }
 
 type rawTrackerConfig struct {
@@ -601,4 +620,9 @@ type rawTasksConfig struct {
 type rawHooksConfig struct {
 	BeforeRelease string `json:"beforeRelease"`
 	AfterRelease  string `json:"afterRelease"`
+}
+
+type rawLogConfig struct {
+	Directory string `json:"directory"`
+	Filename  string `json:"filename"`
 }
