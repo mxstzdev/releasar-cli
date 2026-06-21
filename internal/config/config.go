@@ -34,6 +34,7 @@ type Config struct {
 	Changelog  ChangelogConfig
 	Tasks      TasksConfig
 	Hooks      HooksConfig
+	Notify     NotifyConfig
 }
 
 type GitConfig struct {
@@ -300,6 +301,40 @@ func applyDefaults(raw *rawConfig, pm PackageManagerKind) Config {
 	cfg.Hooks.BeforeRelease = raw.Hooks.BeforeRelease
 	cfg.Hooks.AfterRelease = raw.Hooks.AfterRelease
 
+	// Notify
+	if raw.Notify.Email != nil {
+		cfg.Notify.Email = &EmailNotifyConfig{
+			SMTPHost:    raw.Notify.Email.SMTPHost,
+			SMTPPort:    raw.Notify.Email.SMTPPort,
+			SMTPUserEnv: raw.Notify.Email.SMTPUserEnv,
+			SMTPPassEnv: raw.Notify.Email.SMTPPassEnv,
+			From:        raw.Notify.Email.From,
+			To:          raw.Notify.Email.To,
+			Subject:     stringOr(raw.Notify.Email.Subject, "Released {{tag}}"),
+		}
+	}
+	if raw.Notify.Telegram != nil {
+		cfg.Notify.Telegram = &TelegramNotifyConfig{
+			TokenEnv: raw.Notify.Telegram.TokenEnv,
+			ChatID:   raw.Notify.Telegram.ChatID,
+		}
+	}
+	if raw.Notify.Desktop != nil {
+		cfg.Notify.Desktop = &DesktopNotifyConfig{}
+	}
+	if raw.Notify.Slack != nil {
+		cfg.Notify.Slack = &SlackNotifyConfig{
+			WebhookEnv: raw.Notify.Slack.WebhookEnv,
+		}
+	}
+	if raw.Notify.Webhook != nil {
+		cfg.Notify.Webhook = &WebhookNotifyConfig{
+			URL:        raw.Notify.Webhook.URL,
+			Headers:    raw.Notify.Webhook.Headers,
+			HeadersEnv: raw.Notify.Webhook.HeadersEnv,
+		}
+	}
+
 	return cfg
 }
 
@@ -359,6 +394,24 @@ func validateTokens(cfg *Config) error {
 	}
 	if err := check(cfg.Tracker.TokenEnv, "tracker."+cfg.Tracker.Provider); err != nil {
 		return err
+	}
+	if cfg.Notify.Telegram != nil {
+		if err := check(cfg.Notify.Telegram.TokenEnv, "notify.telegram"); err != nil {
+			return err
+		}
+	}
+	if cfg.Notify.Slack != nil {
+		if err := check(cfg.Notify.Slack.WebhookEnv, "notify.slack"); err != nil {
+			return err
+		}
+	}
+	if cfg.Notify.Email != nil {
+		if err := check(cfg.Notify.Email.SMTPUserEnv, "notify.email"); err != nil {
+			return err
+		}
+		if err := check(cfg.Notify.Email.SMTPPassEnv, "notify.email"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -453,6 +506,22 @@ func mergeRaw(base, overlay *rawConfig) *rawConfig {
 		m.Hooks.AfterRelease = overlay.Hooks.AfterRelease
 	}
 
+	if overlay.Notify.Email != nil {
+		m.Notify.Email = overlay.Notify.Email
+	}
+	if overlay.Notify.Telegram != nil {
+		m.Notify.Telegram = overlay.Notify.Telegram
+	}
+	if overlay.Notify.Desktop != nil {
+		m.Notify.Desktop = overlay.Notify.Desktop
+	}
+	if overlay.Notify.Slack != nil {
+		m.Notify.Slack = overlay.Notify.Slack
+	}
+	if overlay.Notify.Webhook != nil {
+		m.Notify.Webhook = overlay.Notify.Webhook
+	}
+
 	return &m
 }
 
@@ -481,6 +550,7 @@ type rawConfig struct {
 	Changelog  rawChangelogConfig  `json:"changelog"`
 	Tasks      rawTasksConfig      `json:"tasks"`
 	Hooks      rawHooksConfig      `json:"hooks"`
+	Notify     rawNotifyConfig     `json:"notify"`
 }
 
 type rawTrackerConfig struct {

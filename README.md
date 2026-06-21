@@ -20,6 +20,7 @@ It helps you as a software developer to automate your project release workflow w
 - 🔐 Secret scanning *(pre-release credential leak detection via built-in [gitleaks](https://github.com/gitleaks/gitleaks))*
 - 🧪 Tests tasks auto-detection & execution
 - 🚧 Build tasks execution
+- 🔔 Post-release notifications *(Email, Telegram, Slack, desktop, and generic webhooks)*
 
 ## Support
 

@@ -14,6 +14,7 @@ import (
 	"github.com/mxstzdev/releasar-cli/internal/config"
 	"github.com/mxstzdev/releasar-cli/internal/git"
 	"github.com/mxstzdev/releasar-cli/internal/log"
+	"github.com/mxstzdev/releasar-cli/internal/notify"
 	"github.com/mxstzdev/releasar-cli/internal/scm"
 	"github.com/mxstzdev/releasar-cli/internal/tasks"
 	"github.com/mxstzdev/releasar-cli/internal/tracker"
@@ -65,6 +66,8 @@ type releaseRunner struct {
 	scmProvider     scm.Provider     // nil if no SCM provider is configured
 	trackerProvider tracker.Tracker  // nil if no tracker is configured
 	trackerVersionID string          // ID of the created or selected tracker version
+	notifier        notify.Notifier  // nil if no channels are configured
+	scmReleaseURL   string           // URL returned by scmCreateRelease; forwarded to notifications
 
 	singleBranch         bool
 	releaseBranchCreated bool
@@ -205,6 +208,7 @@ func (r *releaseRunner) run() error {
 	if err := r.trackerCloseVersion(); err != nil {
 		return err
 	}
+	r.sendNotifications()
 	r.printSummary()
 	return nil
 }
@@ -320,6 +324,53 @@ func (r *releaseRunner) initialize() error {
 		})
 		if err != nil {
 			return fmt.Errorf("initialising tracker: %w", err)
+		}
+	}
+
+	n := cfg.Notify
+	if n.Email != nil || n.Telegram != nil || n.Desktop != nil || n.Slack != nil || n.Webhook != nil {
+		notifyCfg := notify.Config{Desktop: n.Desktop != nil}
+		if n.Email != nil {
+			notifyCfg.Email = &notify.EmailConfig{
+				SMTPHost: n.Email.SMTPHost,
+				SMTPPort: n.Email.SMTPPort,
+				SMTPUser: os.Getenv(n.Email.SMTPUserEnv),
+				SMTPPass: os.Getenv(n.Email.SMTPPassEnv),
+				From:     n.Email.From,
+				To:       n.Email.To,
+				Subject:  n.Email.Subject,
+			}
+		}
+		if n.Telegram != nil {
+			notifyCfg.Telegram = &notify.TelegramConfig{
+				Token:  os.Getenv(n.Telegram.TokenEnv),
+				ChatID: n.Telegram.ChatID,
+			}
+		}
+		if n.Slack != nil {
+			notifyCfg.Slack = &notify.SlackConfig{
+				WebhookURL: os.Getenv(n.Slack.WebhookEnv),
+			}
+		}
+		if n.Webhook != nil {
+			headers := make(map[string]string)
+			for k, v := range n.Webhook.Headers {
+				headers[k] = v
+			}
+			for k, envName := range n.Webhook.HeadersEnv {
+				if v := os.Getenv(envName); v != "" {
+					headers[k] = v
+				}
+			}
+			notifyCfg.Webhook = &notify.WebhookConfig{
+				URL:     n.Webhook.URL,
+				Headers: headers,
+			}
+		}
+		var err error
+		r.notifier, err = notify.Build(notifyCfg)
+		if err != nil {
+			return fmt.Errorf("initialising notifier: %w", err)
 		}
 	}
 
@@ -1219,12 +1270,34 @@ func (r *releaseRunner) scmCreateRelease() error {
 		}
 	}
 
-	url, err := r.scmProvider.CreateRelease(r.tag, r.tag, body)
+	releaseURL, err := r.scmProvider.CreateRelease(r.tag, r.tag, body)
 	if err != nil {
 		return fmt.Errorf("creating SCM release: %w", err)
 	}
-	fmt.Printf("Release published: %s\n", url)
+	r.scmReleaseURL = releaseURL
+	fmt.Printf("Release published: %s\n", releaseURL)
 	return nil
+}
+
+func (r *releaseRunner) sendNotifications() {
+	if r.notifier == nil {
+		return
+	}
+	if r.dryRun {
+		fmt.Println("[dry-run] would send release notifications")
+		return
+	}
+
+	entry := versioning.ChangelogFromCommits(r.nextVersion.String(), time.Now(), r.parsedCommits)
+	if err := r.notifier.Notify(notify.Event{
+		Type:    notify.EventReleaseComplete,
+		Tag:     r.tag,
+		Version: r.nextVersion.String(),
+		URL:     r.scmReleaseURL,
+		Body:    entry.Render(),
+	}); err != nil {
+		fmt.Printf("Warning: notification error: %s\n", err)
+	}
 }
 
 func (r *releaseRunner) printSummary() {
