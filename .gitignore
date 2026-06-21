@@ -21,13 +21,11 @@ coverage.txt
 # Secrets / local overrides
 *.env
 .env*
-releasar.local.json
+releasar.json
 
 # Log output
-*.log
 storage/
+*.log
 
 # Build output
-releasar
-releasar-cli
 dist/

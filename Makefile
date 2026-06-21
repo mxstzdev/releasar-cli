@@ -6,12 +6,18 @@ STORAGE := storage
 .PHONY: build build-all test test-integration vet lint clean \
         build-darwin-amd64 build-darwin-arm64 \
         build-linux-amd64 build-linux-arm64 \
+        build-windows-amd64 build-windows-arm64 \
+        build-macos build-linux build-windows \
         licenses license-check
 
 build:
 	$(GO) build -o $(BINARY) .
 
-build-all: build-darwin-amd64 build-darwin-arm64 build-linux-amd64 build-linux-arm64
+build-all: build-darwin-amd64 build-darwin-arm64 build-linux-amd64 build-linux-arm64 build-windows-amd64 build-windows-arm64
+
+build-macos: build-darwin-amd64 build-darwin-arm64
+build-linux: build-linux-amd64 build-linux-arm64
+build-windows: build-windows-amd64 build-windows-arm64
 
 build-darwin-amd64:
 	GOOS=darwin  GOARCH=amd64 $(GO) build -o $(DIST)/$(BINARY)-darwin-amd64  .
@@ -24,6 +30,12 @@ build-linux-amd64:
 
 build-linux-arm64:
 	GOOS=linux   GOARCH=arm64 $(GO) build -o $(DIST)/$(BINARY)-linux-arm64   .
+
+build-windows-amd64:
+	GOOS=windows GOARCH=amd64 $(GO) build -o $(DIST)/$(BINARY)-windows-amd64.exe .
+
+build-windows-arm64:
+	GOOS=windows GOARCH=arm64 $(GO) build -o $(DIST)/$(BINARY)-windows-arm64.exe .
 
 test:
 	$(GO) test ./...
