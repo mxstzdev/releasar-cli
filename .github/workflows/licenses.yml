@@ -1,0 +1,47 @@
+name: Licenses
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - go.mod
+      - go.sum
+      - LICENSES
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  license-check:
+    name: License compliance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install go-licenses
+        run: go install github.com/google/go-licenses@latest
+
+      - name: Check dependency licenses
+        run: go-licenses check ./... --ignore github.com/mxstzdev/releasar-cli --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MPL-2.0,CC0-1.0
+
+      - name: Verify LICENSES file is up to date
+        run: |
+          go-licenses save ./... --ignore github.com/mxstzdev/releasar-cli --save_path=.licenses/ --force 2>/dev/null
+          {
+            find .licenses/ -type f | LC_ALL=C sort | while read f; do
+              echo "================================================================================"
+              echo "$(basename $(dirname $f))/$(basename $f)"
+              echo "================================================================================"
+              cat "$f"
+              echo ""
+            done
+          } > LICENSES.new
+          rm -rf .licenses/
+          diff LICENSES LICENSES.new || (echo "LICENSES file is out of date. Run 'make licenses' and commit the result." && exit 1)
+          rm LICENSES.new

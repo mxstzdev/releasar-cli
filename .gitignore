@@ -16,6 +16,7 @@ Thumbs.db
 *.out
 coverage.html
 coverage.txt
+.licenses/
 
 # Secrets / local overrides
 *.env
