@@ -3,7 +3,7 @@ GO      := go
 DIST    := dist
 STORAGE := storage
 
-.PHONY: build build-all test vet lint clean \
+.PHONY: build build-all test test-integration vet lint clean \
         build-darwin-amd64 build-darwin-arm64 \
         build-linux-amd64 build-linux-arm64 \
         licenses license-check
@@ -27,6 +27,9 @@ build-linux-arm64:
 
 test:
 	$(GO) test ./...
+
+test-integration:
+	$(GO) test -tags integration -v -timeout 5m ./...
 
 vet:
 	$(GO) vet ./...
