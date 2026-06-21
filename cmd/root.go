@@ -14,9 +14,10 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:     "releasar",
-	Short:   "Local release workflow automation for Git-based projects",
-	Version: appVersion,
+	Use:          "releasar",
+	Short:        "Local release workflow automation for Git-based projects",
+	Version:      appVersion,
+	SilenceUsage: true,
 }
 
 // Execute wires version and runs the root command.
