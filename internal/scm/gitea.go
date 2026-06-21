@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/mxstzdev/releasar-cli/internal/log"
 )
 
 const (
@@ -23,9 +25,10 @@ type gitea struct {
 	owner   string
 	repo    string
 	http    *http.Client
+	log     *log.Channel
 }
 
-func newGitea(cfg Config, defaultHost string) (*gitea, error) {
+func newGitea(cfg Config, defaultHost string, log *log.Channel) (*gitea, error) {
 	host := cfg.Host
 	if host == "" {
 		host = defaultHost
@@ -39,6 +42,7 @@ func newGitea(cfg Config, defaultHost string) (*gitea, error) {
 		owner:   cfg.Owner,
 		repo:    cfg.Repo,
 		http:    &http.Client{},
+		log:     log,
 	}, nil
 }
 
@@ -71,6 +75,7 @@ func (g *gitea) CreateRelease(tag, name, body string) (string, error) {
 
 	resp, err := g.http.Do(req)
 	if err != nil {
+		g.log.Error("Gitea release request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return "", fmt.Errorf("sending release request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -81,6 +86,7 @@ func (g *gitea) CreateRelease(tag, name, body string) (string, error) {
 	}
 
 	if resp.StatusCode != http.StatusCreated {
+		g.log.Error("Gitea API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return "", fmt.Errorf("Gitea/Forgejo API returned %d: %s", resp.StatusCode, respBody)
 	}
 
@@ -91,5 +97,6 @@ func (g *gitea) CreateRelease(tag, name, body string) (string, error) {
 		return "", fmt.Errorf("parsing release response: %w", err)
 	}
 
+	g.log.Debug("Gitea release created", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 	return result.HTMLURL, nil
 }

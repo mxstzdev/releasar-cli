@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+
+	"github.com/mxstzdev/releasar-cli/internal/log"
 )
 
 const gitlabDefaultBaseURL = "https://gitlab.com"
@@ -21,9 +23,10 @@ type gitLab struct {
 	owner   string
 	repo    string
 	http    *http.Client
+	log     *log.Channel
 }
 
-func newGitLab(cfg Config) *gitLab {
+func newGitLab(cfg Config, log *log.Channel) *gitLab {
 	baseURL := gitlabDefaultBaseURL
 	if cfg.Host != "" {
 		baseURL = cfg.Host
@@ -34,6 +37,7 @@ func newGitLab(cfg Config) *gitLab {
 		owner:   cfg.Owner,
 		repo:    cfg.Repo,
 		http:    &http.Client{},
+		log:     log,
 	}
 }
 
@@ -66,6 +70,7 @@ func (g *gitLab) CreateRelease(tag, name, body string) (string, error) {
 
 	resp, err := g.http.Do(req)
 	if err != nil {
+		g.log.Error("GitLab release request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return "", fmt.Errorf("sending release request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -77,10 +82,12 @@ func (g *gitLab) CreateRelease(tag, name, body string) (string, error) {
 
 	// GitLab Create Release returns 200, not 201.
 	if resp.StatusCode != http.StatusOK {
+		g.log.Error("GitLab API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return "", fmt.Errorf("GitLab API returned %d: %s", resp.StatusCode, respBody)
 	}
 
 	// Construct the web URL from known parts; _links.self is the API URL, not the web URL.
 	releaseURL := fmt.Sprintf("%s/%s/%s/-/releases/%s", g.baseURL, g.owner, g.repo, url.PathEscape(tag))
+	g.log.Debug("GitLab release created", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 	return releaseURL, nil
 }

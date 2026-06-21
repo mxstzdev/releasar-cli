@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/mxstzdev/releasar-cli/internal/log"
 )
 
 const githubDefaultBaseURL = "https://api.github.com"
@@ -18,9 +20,10 @@ type gitHub struct {
 	owner   string
 	repo    string
 	http    *http.Client
+	log     *log.Channel
 }
 
-func newGitHub(cfg Config) *gitHub {
+func newGitHub(cfg Config, log *log.Channel) *gitHub {
 	baseURL := githubDefaultBaseURL
 	if cfg.Host != "" {
 		baseURL = cfg.Host
@@ -31,6 +34,7 @@ func newGitHub(cfg Config) *gitHub {
 		owner:   cfg.Owner,
 		repo:    cfg.Repo,
 		http:    &http.Client{},
+		log:     log,
 	}
 }
 
@@ -65,6 +69,7 @@ func (g *gitHub) CreateRelease(tag, name, body string) (string, error) {
 
 	resp, err := g.http.Do(req)
 	if err != nil {
+		g.log.Error("GitHub release request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return "", fmt.Errorf("sending release request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -75,6 +80,7 @@ func (g *gitHub) CreateRelease(tag, name, body string) (string, error) {
 	}
 
 	if resp.StatusCode != http.StatusCreated {
+		g.log.Error("GitHub API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return "", fmt.Errorf("GitHub API returned %d: %s", resp.StatusCode, respBody)
 	}
 
@@ -85,5 +91,6 @@ func (g *gitHub) CreateRelease(tag, name, body string) (string, error) {
 		return "", fmt.Errorf("parsing release response: %w", err)
 	}
 
+	g.log.Debug("GitHub release created", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 	return result.HTMLURL, nil
 }
