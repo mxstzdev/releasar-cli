@@ -307,7 +307,7 @@ func (r *releaseRunner) initialize() error {
 			Token: os.Getenv(cfg.SCM.TokenEnv),
 			Owner: owner,
 			Repo:  repo,
-		})
+		}, log.Get("scm"))
 		if err != nil {
 			return fmt.Errorf("initialising SCM provider: %w", err)
 		}
@@ -322,7 +322,7 @@ func (r *releaseRunner) initialize() error {
 			ProjectKey: cfg.Tracker.ProjectKey,
 			Owner:      owner,
 			Repo:       repo,
-		})
+		}, log.Get("tracker"))
 		if err != nil {
 			return fmt.Errorf("initialising tracker: %w", err)
 		}
@@ -369,7 +369,7 @@ func (r *releaseRunner) initialize() error {
 			}
 		}
 		var err error
-		r.notifier, err = notify.Build(notifyCfg)
+		r.notifier, err = notify.Build(notifyCfg, log.Get("notify"))
 		if err != nil {
 			return fmt.Errorf("initialising notifier: %w", err)
 		}
