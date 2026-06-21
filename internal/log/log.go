@@ -103,6 +103,15 @@ func Init(cfg Config) {
 	manager = newManager(cfg)
 }
 
+// Nop returns a Channel that silently discards all log output at zero allocation cost.
+// Intended for tests and callers that do not need logging.
+func Nop() *Channel {
+	return &Channel{
+		logger: zerolog.Nop(),
+		ctx:    make(map[string]any),
+	}
+}
+
 // Get returns the named channel, creating it lazily on first call.
 func Get(name string) *Channel {
 	return manager.Channel(name)
