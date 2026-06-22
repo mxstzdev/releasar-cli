@@ -66,6 +66,7 @@ func (j *jira) ListVersions() ([]Version, error) {
 
 	resp, err := j.http.Do(req)
 	if err != nil {
+		j.log.Error("Jira versions request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return nil, fmt.Errorf("fetching versions: %w", err)
 	}
 	defer resp.Body.Close()
@@ -75,6 +76,7 @@ func (j *jira) ListVersions() ([]Version, error) {
 		return nil, fmt.Errorf("reading versions response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
+		j.log.Error("Jira API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return nil, fmt.Errorf("Jira API returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -97,6 +99,7 @@ func (j *jira) ListVersions() ([]Version, error) {
 			Open: !v.Released,
 		}
 	}
+	j.log.Debug("Jira versions listed", map[string]any{"endpoint": endpoint, "count": len(versions)})
 	return versions, nil
 }
 
@@ -218,6 +221,7 @@ func (j *jira) ResolveRefs(refs []string) ([]ResolvedRef, error) {
 			URL:   issue.Self,
 		}
 	}
+	j.log.Debug("Jira refs resolved", map[string]any{"count": len(resolved)})
 	return resolved, nil
 }
 
@@ -276,6 +280,7 @@ func (j *jira) AssignTickets(refs []string, versionID string) error {
 	if len(errs) > 0 {
 		return fmt.Errorf("assigning tickets: %s", strings.Join(errs, "; "))
 	}
+	j.log.Debug("Jira tickets assigned", map[string]any{"count": len(refs), "version": versionID})
 	return nil
 }
 

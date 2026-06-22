@@ -60,6 +60,7 @@ func (o *openProject) ListVersions() ([]Version, error) {
 
 	resp, err := o.http.Do(req)
 	if err != nil {
+		o.log.Error("OpenProject versions request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return nil, fmt.Errorf("fetching versions: %w", err)
 	}
 	defer resp.Body.Close()
@@ -69,6 +70,7 @@ func (o *openProject) ListVersions() ([]Version, error) {
 		return nil, fmt.Errorf("reading versions response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
+		o.log.Error("OpenProject API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return nil, fmt.Errorf("OpenProject API returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -94,6 +96,7 @@ func (o *openProject) ListVersions() ([]Version, error) {
 			Open: v.Status == "open",
 		}
 	}
+	o.log.Debug("OpenProject versions listed", map[string]any{"endpoint": endpoint, "count": len(versions)})
 	return versions, nil
 }
 
@@ -223,6 +226,7 @@ func (o *openProject) ResolveRefs(refs []string) ([]ResolvedRef, error) {
 			URL:   o.baseURL + wp.Links.Self.Href,
 		})
 	}
+	o.log.Debug("OpenProject refs resolved", map[string]any{"count": len(resolved)})
 	return resolved, nil
 }
 
@@ -314,6 +318,7 @@ func (o *openProject) AssignTickets(refs []string, versionID string) error {
 	if len(errs) > 0 {
 		return fmt.Errorf("assigning tickets: %s", strings.Join(errs, "; "))
 	}
+	o.log.Debug("OpenProject tickets assigned", map[string]any{"count": len(refs), "version": versionID})
 	return nil
 }
 

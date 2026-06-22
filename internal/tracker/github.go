@@ -60,6 +60,7 @@ func (g *gitHub) ListVersions() ([]Version, error) {
 
 	resp, err := g.http.Do(req)
 	if err != nil {
+		g.log.Error("GitHub milestones request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return nil, fmt.Errorf("fetching milestones: %w", err)
 	}
 	defer resp.Body.Close()
@@ -69,6 +70,7 @@ func (g *gitHub) ListVersions() ([]Version, error) {
 		return nil, fmt.Errorf("reading milestones response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
+		g.log.Error("GitHub API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return nil, fmt.Errorf("GitHub API returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -89,6 +91,7 @@ func (g *gitHub) ListVersions() ([]Version, error) {
 			Open: m.State == "open",
 		}
 	}
+	g.log.Debug("GitHub milestones listed", map[string]any{"endpoint": endpoint, "count": len(versions)})
 	return versions, nil
 }
 
@@ -194,6 +197,7 @@ func (g *gitHub) ResolveRefs(refs []string) ([]ResolvedRef, error) {
 	if len(errs) > 0 {
 		return resolved, fmt.Errorf("resolving refs: %s", strings.Join(errs, "; "))
 	}
+	g.log.Debug("GitHub refs resolved", map[string]any{"count": len(resolved)})
 	return resolved, nil
 }
 
@@ -244,6 +248,7 @@ func (g *gitHub) AssignTickets(refs []string, versionID string) error {
 	if len(errs) > 0 {
 		return fmt.Errorf("assigning tickets: %s", strings.Join(errs, "; "))
 	}
+	g.log.Debug("GitHub tickets assigned", map[string]any{"count": len(refs), "milestone": versionID})
 	return nil
 }
 

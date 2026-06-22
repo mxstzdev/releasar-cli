@@ -31,6 +31,7 @@ type Notifier interface {
 // Returns nil if no channels are configured.
 func Build(cfg Config, log *log.Channel) (Notifier, error) {
 	var channels []Notifier
+	var names []string
 
 	if cfg.Email != nil {
 		ch, err := newEmail(*cfg.Email, log)
@@ -38,6 +39,7 @@ func Build(cfg Config, log *log.Channel) (Notifier, error) {
 			return nil, fmt.Errorf("email notifier: %w", err)
 		}
 		channels = append(channels, ch)
+		names = append(names, "email")
 	}
 
 	if cfg.Telegram != nil {
@@ -46,10 +48,12 @@ func Build(cfg Config, log *log.Channel) (Notifier, error) {
 			return nil, fmt.Errorf("telegram notifier: %w", err)
 		}
 		channels = append(channels, ch)
+		names = append(names, "telegram")
 	}
 
 	if cfg.Desktop {
 		channels = append(channels, newDesktop(log))
+		names = append(names, "desktop")
 	}
 
 	if cfg.Slack != nil {
@@ -58,6 +62,7 @@ func Build(cfg Config, log *log.Channel) (Notifier, error) {
 			return nil, fmt.Errorf("slack notifier: %w", err)
 		}
 		channels = append(channels, ch)
+		names = append(names, "slack")
 	}
 
 	if cfg.Webhook != nil {
@@ -66,25 +71,39 @@ func Build(cfg Config, log *log.Channel) (Notifier, error) {
 			return nil, fmt.Errorf("webhook notifier: %w", err)
 		}
 		channels = append(channels, ch)
+		names = append(names, "webhook")
 	}
 
 	if len(channels) == 0 {
 		return nil, nil
 	}
 
-	return &multi{channels: channels}, nil
+	log.Debug("notification channels configured", map[string]any{"channels": names})
+	return &multi{channels: channels, names: names, log: log}, nil
 }
 
 // multi fans out a Notify call to all configured channels.
 // All channels are attempted; errors are collected and returned together.
 type multi struct {
 	channels []Notifier
+	names    []string
+	log      *log.Channel
 }
 
 func (m *multi) Notify(event Event) error {
 	var errs []string
-	for _, ch := range m.channels {
+	for i, ch := range m.channels {
+		var name string
+		if i < len(m.names) {
+			name = m.names[i]
+		}
+		if m.log != nil {
+			m.log.Debug("dispatching notification", map[string]any{"channel": name})
+		}
 		if err := ch.Notify(event); err != nil {
+			if m.log != nil {
+				m.log.Warn("notification channel failed", map[string]any{"channel": name, "error": err})
+			}
 			errs = append(errs, err.Error())
 		}
 	}

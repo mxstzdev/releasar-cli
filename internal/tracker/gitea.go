@@ -66,6 +66,7 @@ func (g *giteaTracker) ListVersions() ([]Version, error) {
 
 	resp, err := g.http.Do(req)
 	if err != nil {
+		g.log.Error("Gitea milestones request failed", map[string]any{"endpoint": endpoint, "error": err})
 		return nil, fmt.Errorf("fetching milestones: %w", err)
 	}
 	defer resp.Body.Close()
@@ -75,6 +76,7 @@ func (g *giteaTracker) ListVersions() ([]Version, error) {
 		return nil, fmt.Errorf("reading milestones response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
+		g.log.Error("Gitea API error", map[string]any{"endpoint": endpoint, "status": resp.StatusCode})
 		return nil, fmt.Errorf("Gitea API returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -95,6 +97,7 @@ func (g *giteaTracker) ListVersions() ([]Version, error) {
 			Open: !m.Closed,
 		}
 	}
+	g.log.Debug("Gitea milestones listed", map[string]any{"endpoint": endpoint, "count": len(versions)})
 	return versions, nil
 }
 
@@ -199,6 +202,7 @@ func (g *giteaTracker) ResolveRefs(refs []string) ([]ResolvedRef, error) {
 	if len(errs) > 0 {
 		return resolved, fmt.Errorf("resolving refs: %s", strings.Join(errs, "; "))
 	}
+	g.log.Debug("Gitea refs resolved", map[string]any{"count": len(resolved)})
 	return resolved, nil
 }
 
@@ -248,6 +252,7 @@ func (g *giteaTracker) AssignTickets(refs []string, versionID string) error {
 	if len(errs) > 0 {
 		return fmt.Errorf("assigning tickets: %s", strings.Join(errs, "; "))
 	}
+	g.log.Debug("Gitea tickets assigned", map[string]any{"count": len(refs), "milestone": versionID})
 	return nil
 }
 
