@@ -41,7 +41,8 @@ func init() {
 
 var releaseCmd = &cobra.Command{
 	Use:       "release [major|minor|patch]",
-	Short:     "Run the full project release workflow",
+	Short:     "Run the full project deployment workflow",
+	GroupID:   "primary",
 	ValidArgs: []string{"major", "minor", "patch"},
 	Args:      cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
