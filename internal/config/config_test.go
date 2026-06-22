@@ -36,7 +36,7 @@ func TestLoad(t *testing.T) {
 				assert.Equal(t, "semver", cfg.Versioning.Scheme)
 				assert.True(t, cfg.Changelog.Enabled)
 				assert.Equal(t, "CHANGELOG.md", cfg.Changelog.Path)
-				assert.Equal(t, PackageManagerNone, cfg.DetectedPackageManager)
+				assert.Equal(t, ProjectTypeUnknown, cfg.DetectedProjectType)
 			},
 		},
 		{
@@ -46,31 +46,31 @@ func TestLoad(t *testing.T) {
 			},
 			env: map[string]string{"GITHUB_TOKEN": "tok"},
 			assertFunc: func(t *testing.T, cfg *Config) {
-				assert.Equal(t, PackageManagerNpm, cfg.DetectedPackageManager)
+				assert.Equal(t, ProjectTypeNodeNpm, cfg.DetectedProjectType)
 				assert.Equal(t, "github", cfg.SCM.Provider)
 				assert.Equal(t, "package.json", filepath.Base(cfg.SourceFile))
 			},
 		},
 		{
-			name: "loads from composer.json releasar key and detects composer",
+			name: "loads from composer.json releasar key and detects php",
 			setup: func(dir string) {
 				writeFile(t, dir, "composer.json", `{"releasar": {"scm": {"provider": "gitlab"}}}`)
 			},
 			env: map[string]string{"GITLAB_TOKEN": "tok"},
 			assertFunc: func(t *testing.T, cfg *Config) {
-				assert.Equal(t, PackageManagerComposer, cfg.DetectedPackageManager)
+				assert.Equal(t, ProjectTypePHP, cfg.DetectedProjectType)
 				assert.Equal(t, "gitlab", cfg.SCM.Provider)
 			},
 		},
 		{
-			name: "npm takes precedence when both manifests present without lock files",
+			name: "composer takes precedence over package.json as application manifest",
 			setup: func(dir string) {
 				writeFile(t, dir, "releasar.json", `{}`)
 				writeFile(t, dir, "package.json", `{}`)
 				writeFile(t, dir, "composer.json", `{}`)
 			},
 			assertFunc: func(t *testing.T, cfg *Config) {
-				assert.Equal(t, PackageManagerNpm, cfg.DetectedPackageManager)
+				assert.Equal(t, ProjectTypePHP, cfg.DetectedProjectType)
 			},
 		},
 		{
@@ -81,7 +81,7 @@ func TestLoad(t *testing.T) {
 				writeFile(t, dir, "yarn.lock", ``)
 			},
 			assertFunc: func(t *testing.T, cfg *Config) {
-				assert.Equal(t, PackageManagerYarn, cfg.DetectedPackageManager)
+				assert.Equal(t, ProjectTypeNodeYarn, cfg.DetectedProjectType)
 			},
 		},
 		{
@@ -92,7 +92,7 @@ func TestLoad(t *testing.T) {
 				writeFile(t, dir, "pnpm-lock.yaml", ``)
 			},
 			assertFunc: func(t *testing.T, cfg *Config) {
-				assert.Equal(t, PackageManagerPnpm, cfg.DetectedPackageManager)
+				assert.Equal(t, ProjectTypeNodePnpm, cfg.DetectedProjectType)
 			},
 		},
 		{
@@ -103,7 +103,7 @@ func TestLoad(t *testing.T) {
 				writeFile(t, dir, "bun.lockb", ``)
 			},
 			assertFunc: func(t *testing.T, cfg *Config) {
-				assert.Equal(t, PackageManagerBun, cfg.DetectedPackageManager)
+				assert.Equal(t, ProjectTypeNodeBun, cfg.DetectedProjectType)
 			},
 		},
 		{
@@ -114,7 +114,7 @@ func TestLoad(t *testing.T) {
 				writeFile(t, dir, "bun.lock", ``)
 			},
 			assertFunc: func(t *testing.T, cfg *Config) {
-				assert.Equal(t, PackageManagerBun, cfg.DetectedPackageManager)
+				assert.Equal(t, ProjectTypeNodeBun, cfg.DetectedProjectType)
 			},
 		},
 		{
@@ -127,7 +127,68 @@ func TestLoad(t *testing.T) {
 				writeFile(t, dir, "yarn.lock", ``)
 			},
 			assertFunc: func(t *testing.T, cfg *Config) {
-				assert.Equal(t, PackageManagerBun, cfg.DetectedPackageManager)
+				assert.Equal(t, ProjectTypeNodeBun, cfg.DetectedProjectType)
+			},
+		},
+		{
+			name: "detects go via go.mod",
+			setup: func(dir string) {
+				writeFile(t, dir, "releasar.json", `{}`)
+				writeFile(t, dir, "go.mod", `module example.com/myapp`)
+			},
+			assertFunc: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, ProjectTypeGo, cfg.DetectedProjectType)
+			},
+		},
+		{
+			name: "detects rust via Cargo.toml",
+			setup: func(dir string) {
+				writeFile(t, dir, "releasar.json", `{}`)
+				writeFile(t, dir, "Cargo.toml", `[package]`)
+			},
+			assertFunc: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, ProjectTypeRust, cfg.DetectedProjectType)
+			},
+		},
+		{
+			name: "detects python via pyproject.toml",
+			setup: func(dir string) {
+				writeFile(t, dir, "releasar.json", `{}`)
+				writeFile(t, dir, "pyproject.toml", `[tool.poetry]`)
+			},
+			assertFunc: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, ProjectTypePython, cfg.DetectedProjectType)
+			},
+		},
+		{
+			name: "detects python via Pipfile",
+			setup: func(dir string) {
+				writeFile(t, dir, "releasar.json", `{}`)
+				writeFile(t, dir, "Pipfile", ``)
+			},
+			assertFunc: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, ProjectTypePython, cfg.DetectedProjectType)
+			},
+		},
+		{
+			name: "go takes precedence over package.json as application manifest",
+			setup: func(dir string) {
+				writeFile(t, dir, "releasar.json", `{}`)
+				writeFile(t, dir, "go.mod", `module example.com/myapp`)
+				writeFile(t, dir, "package.json", `{}`)
+			},
+			assertFunc: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, ProjectTypeGo, cfg.DetectedProjectType)
+			},
+		},
+		{
+			name: "projectType config field overrides auto-detection",
+			setup: func(dir string) {
+				writeFile(t, dir, "releasar.json", `{"projectType": "go"}`)
+				writeFile(t, dir, "package.json", `{}`)
+			},
+			assertFunc: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, ProjectTypeGo, cfg.DetectedProjectType)
 			},
 		},
 		{

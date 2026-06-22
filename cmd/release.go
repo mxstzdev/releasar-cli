@@ -961,10 +961,14 @@ func (r *releaseRunner) runTasks(label string, tasks []config.TaskRef) error {
 	for _, ref := range tasks {
 		pm, script := config.ParseTaskRef(ref)
 		if pm == "" {
-			pm = string(r.cfg.DetectedPackageManager)
+			pm = r.cfg.DetectedProjectType.PackageManager()
 		}
 		if pm == "" {
-			return fmt.Errorf("cannot run %s task %q: no package manager detected", label, script)
+			supported := make([]string, len(config.SupportedProjectTypes))
+			for i, k := range config.SupportedProjectTypes {
+				supported[i] = string(k)
+			}
+			return fmt.Errorf("cannot run %s task %q: no project type detected\nhint: set \"projectType\" in releasar.json (supported values: %s)", label, script, strings.Join(supported, ", "))
 		}
 
 		if !r.quiet {

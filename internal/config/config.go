@@ -9,22 +9,58 @@ import (
 	"strings"
 )
 
-// PackageManagerKind identifies the detected package manager.
-type PackageManagerKind string
+// ProjectTypeKind identifies the primary language and toolchain of the project.
+type ProjectTypeKind string
 
 const (
-	PackageManagerNone     PackageManagerKind = ""
-	PackageManagerNpm      PackageManagerKind = "npm"
-	PackageManagerYarn     PackageManagerKind = "yarn"
-	PackageManagerPnpm     PackageManagerKind = "pnpm"
-	PackageManagerBun      PackageManagerKind = "bun"
-	PackageManagerComposer PackageManagerKind = "composer"
+	ProjectTypeUnknown  ProjectTypeKind = ""
+	ProjectTypeNodeNpm  ProjectTypeKind = "npm"
+	ProjectTypeNodeYarn ProjectTypeKind = "yarn"
+	ProjectTypeNodePnpm ProjectTypeKind = "pnpm"
+	ProjectTypeNodeBun  ProjectTypeKind = "bun"
+	ProjectTypePHP      ProjectTypeKind = "php"
+	ProjectTypeGo       ProjectTypeKind = "go"
+	ProjectTypeRust     ProjectTypeKind = "rust"
+	ProjectTypePython   ProjectTypeKind = "python"
 )
+
+// SupportedProjectTypes lists all project types that can be set via the "projectType" config field.
+var SupportedProjectTypes = []ProjectTypeKind{
+	ProjectTypeGo,
+	ProjectTypeRust,
+	ProjectTypePython,
+	ProjectTypePHP,
+	ProjectTypeNodeNpm,
+	ProjectTypeNodeYarn,
+	ProjectTypeNodePnpm,
+	ProjectTypeNodeBun,
+}
+
+// PackageManager returns the package manager binary name for this project type,
+// or an empty string for types where no single PM binary applies (Go, Python, unknown).
+func (k ProjectTypeKind) PackageManager() string {
+	switch k {
+	case ProjectTypeNodeNpm:
+		return "npm"
+	case ProjectTypeNodeYarn:
+		return "yarn"
+	case ProjectTypeNodePnpm:
+		return "pnpm"
+	case ProjectTypeNodeBun:
+		return "bun"
+	case ProjectTypePHP:
+		return "composer"
+	case ProjectTypeRust:
+		return "cargo"
+	default:
+		return ""
+	}
+}
 
 // Config is the resolved, validated configuration with defaults applied.
 type Config struct {
-	SourceFile string // absolute path of the file that was loaded
-	DetectedPackageManager PackageManagerKind // inferred from manifest presence in the working directory
+	SourceFile          string          // absolute path of the file that was loaded
+	DetectedProjectType ProjectTypeKind // inferred from manifest presence in the working directory
 
 	Git        GitConfig
 	Versioning VersioningConfig
@@ -65,7 +101,7 @@ type SCMConfig struct {
 }
 
 type PackageManagerConfig struct {
-	Provider string // explicit override of DetectedPackageManager
+	Provider string // registry provider name; defaults to the inferred project type's package manager
 	Host     string // private/self-hosted registry URL
 	TokenEnv string // name of the env var holding the registry token
 }
@@ -88,7 +124,7 @@ type ChangelogConfig struct {
 type TaskRef string
 
 // ParseTaskRef splits "npm::test" into ("npm", "test").
-// A bare "test" returns ("", "test"); the PM is resolved from DetectedPackageManager at run time.
+// A bare "test" returns ("", "test"); the PM is resolved from DetectedProjectType at run time.
 func ParseTaskRef(ref TaskRef) (pm, script string) {
 	parts := strings.SplitN(string(ref), "::", 2)
 	if len(parts) == 2 {
@@ -121,10 +157,13 @@ func Load(workingDir string) (*Config, error) {
 		return nil, err
 	}
 
-	detected := detectPackageManager(workingDir)
-	cfg := applyDefaults(raw, detected)
+	detected := detectProjectType(workingDir)
+	if raw.ProjectType != "" {
+		detected = ProjectTypeKind(raw.ProjectType)
+	}
+	cfg := applyDefaults(raw)
 	cfg.SourceFile = sourceFile
-	cfg.DetectedPackageManager = detected
+	cfg.DetectedProjectType = detected
 
 	if err := validateTokens(&cfg); err != nil {
 		return nil, err
@@ -162,10 +201,13 @@ func LoadLayered(rootDir, workingDir string) (*Config, error) {
 	}
 
 	merged := mergeRaw(baseRaw, overlayRaw)
-	detected := detectPackageManager(workingDir)
-	cfg := applyDefaults(merged, detected)
+	detected := detectProjectType(workingDir)
+	if merged.ProjectType != "" {
+		detected = ProjectTypeKind(merged.ProjectType)
+	}
+	cfg := applyDefaults(merged)
 	cfg.SourceFile = sourceFile
-	cfg.DetectedPackageManager = detected
+	cfg.DetectedProjectType = detected
 
 	if err := validateTokens(&cfg); err != nil {
 		return nil, err
@@ -195,10 +237,13 @@ func LoadFile(path, workingDir string) (*Config, error) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
-	detected := detectPackageManager(workingDir)
-	cfg := applyDefaults(&raw, detected)
+	detected := detectProjectType(workingDir)
+	if raw.ProjectType != "" {
+		detected = ProjectTypeKind(raw.ProjectType)
+	}
+	cfg := applyDefaults(&raw)
 	cfg.SourceFile = path
-	cfg.DetectedPackageManager = detected
+	cfg.DetectedProjectType = detected
 	if err := validateTokens(&cfg); err != nil {
 		return nil, err
 	}
@@ -270,31 +315,39 @@ func extractEmbedded(path, key string) (*rawConfig, error) {
 	return &cfg, nil
 }
 
-// detectPackageManager infers the package manager from lock file and manifest presence.
-// Lock files take precedence over package.json alone to differentiate npm alternatives.
-func detectPackageManager(workingDir string) PackageManagerKind {
+// detectProjectType infers the primary project language and toolchain from manifest presence.
+// Application manifests (composer.json, go.mod, Cargo.toml, pyproject.toml) take precedence
+// over Node lock files and package.json, since package.json is commonly present as an
+// auxiliary file in non-Node projects (e.g. Laravel Mix, Symfony Encore, Go doc tooling).
+func detectProjectType(workingDir string) ProjectTypeKind {
 	hasFile := func(name string) bool {
 		_, err := os.Stat(filepath.Join(workingDir, name))
 		return err == nil
 	}
 	switch {
-	case hasFile("bun.lockb") || hasFile("bun.lock"):
-		return PackageManagerBun
-	case hasFile("pnpm-lock.yaml"):
-		return PackageManagerPnpm
-	case hasFile("yarn.lock"):
-		return PackageManagerYarn
-	case hasFile("package.json"):
-		return PackageManagerNpm
 	case hasFile("composer.json"):
-		return PackageManagerComposer
+		return ProjectTypePHP
+	case hasFile("go.mod"):
+		return ProjectTypeGo
+	case hasFile("Cargo.toml"):
+		return ProjectTypeRust
+	case hasFile("pyproject.toml") || hasFile("Pipfile"):
+		return ProjectTypePython
+	case hasFile("bun.lockb") || hasFile("bun.lock"):
+		return ProjectTypeNodeBun
+	case hasFile("pnpm-lock.yaml"):
+		return ProjectTypeNodePnpm
+	case hasFile("yarn.lock"):
+		return ProjectTypeNodeYarn
+	case hasFile("package.json"):
+		return ProjectTypeNodeNpm
 	default:
-		return PackageManagerNone
+		return ProjectTypeUnknown
 	}
 }
 
 // applyDefaults fills in zero-value fields with sensible defaults.
-func applyDefaults(raw *rawConfig, pm PackageManagerKind) Config {
+func applyDefaults(raw *rawConfig) Config {
 	cfg := Config{}
 
 	// Git
@@ -462,6 +515,10 @@ func validateTokens(cfg *Config) error {
 func mergeRaw(base, overlay *rawConfig) *rawConfig {
 	m := *base
 
+	if overlay.ProjectType != "" {
+		m.ProjectType = overlay.ProjectType
+	}
+
 	if overlay.Git.DefaultBranch != "" {
 		m.Git.DefaultBranch = overlay.Git.DefaultBranch
 	}
@@ -591,11 +648,12 @@ func boolOr(b *bool, fallback bool) bool {
 // --- raw deserialization types ---
 
 type rawConfig struct {
-	Git        rawGitConfig        `json:"git"`
-	Versioning rawVersioningConfig `json:"versioning"`
-	SCM        rawSCMConfig        `json:"scm"`
+	ProjectType    string                  `json:"projectType"`
+	Git            rawGitConfig            `json:"git"`
+	Versioning     rawVersioningConfig     `json:"versioning"`
+	SCM            rawSCMConfig            `json:"scm"`
 	PackageManager rawPackageManagerConfig `json:"pm"`
-	Tracker    rawTrackerConfig    `json:"tracker"`
+	Tracker        rawTrackerConfig        `json:"tracker"`
 	Changelog  rawChangelogConfig  `json:"changelog"`
 	Tasks      rawTasksConfig      `json:"tasks"`
 	Hooks      rawHooksConfig      `json:"hooks"`
