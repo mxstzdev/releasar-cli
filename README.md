@@ -8,19 +8,19 @@ Releasar is a local-first CI/CD tool for deployment automation of Git-based proj
 
 It automates the full release workflow from version recommendation to SCM publishing, with features such as:
 
+- 📦 Project type auto-detection *(Go, Rust, Python, PHP, Node — npm, Yarn, pnpm, Bun)*
 - 🪐 [Monorepo](https://en.wikipedia.org/wiki/Monorepo) & single-repo architecture support
 - 🔣 [Semantic Versioning (SemVer)](https://semver.org) & [Calendar Versioning (CalVer)](https://calver.org) support
-- 🔀 Full release branch management *(including rollback on failure)*
 - ✨ Conventional Commits-based version recommendation
-- 🤖 Automatic CHANGELOG updates
-- *️⃣ Version placeholder substitution *(e.g., `{{RLSR_LATEST}}`, `{{RLSR_NEXT.MAJOR}}`, ...)*
-- 📦 Package manager auto-detection & integration *(npm, Yarn, pnpm, Bun, Composer, ...)*
-- 🎫 Issue tracker integration *(GitHub Issues, Gitea/Forgejo/Codeberg, Jira, OpenProject)*
-- 🖥️ Multi-provider SCM support *(GitHub, GitLab, Gitea, Forgejo/Codeberg)*
 - 🔐 Secret scanning *(via built-in [gitleaks](https://github.com/gitleaks/gitleaks))*
+- 🔀 Full release branch management *(including rollback on failure)*
+- *️⃣ Version placeholder substitution *(e.g., `{{RLSR_LATEST}}`, `{{RLSR_NEXT.MAJOR}}`, ...)*
+- 🤖 Automatic project CHANGELOG updates
 - 🚧 Build task execution
 - 🧪 Test suite auto-detection & execution
-- 🔔 Post-release notifications *(Email, Telegram, Slack, desktop, and generic webhooks)*
+- 🖥️ Multi-provider SCM support *(GitHub, GitLab, Gitea, Forgejo/Codeberg)*
+- 🎫 Issue tracker integration *(GitHub Issues, Gitea/Forgejo/Codeberg, Jira, OpenProject)*
+- 🔔 Post-release notifications *(Email, Slack, Telegram, OS notifications, and generic webhooks)*
 
 ## Support
 
@@ -33,4 +33,6 @@ However, I am always grateful for any support in the form of collaboration on th
 ## License
 
 Releasar is released under the [GNU General Public License v3.0](LICENSE).
+
+This project includes third-party components distributed under their own licenses — see [`LICENSES`](LICENSES) for details.
 
