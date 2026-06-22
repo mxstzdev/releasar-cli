@@ -142,6 +142,7 @@ func (r *releaseRunner) run() error {
 			return fmt.Errorf("invalid version %q: %w", r.versionFlag, err)
 		}
 		r.nextVersion = parsed
+		r.log.Info("version overridden via flag", map[string]any{"version": r.nextVersion.String()})
 	} else if r.bumpArg != "" {
 		bump := bumpKindFromArg(r.bumpArg)
 		next, err := r.currentVersion.Increment(bump)
@@ -149,6 +150,7 @@ func (r *releaseRunner) run() error {
 			return fmt.Errorf("computing next version: %w", err)
 		}
 		r.nextVersion = next
+		r.log.Info("version set via bump argument", map[string]any{"bump": r.bumpArg, "version": r.nextVersion.String()})
 		if !r.quiet {
 			fmt.Printf("Current version : %s\nRequested bump  : %s\nNext version    : %s\n",
 				r.currentVersion.String(), r.bumpArg, r.nextVersion.String())
@@ -353,6 +355,7 @@ func (r *releaseRunner) initialize() error {
 		if err != nil {
 			return fmt.Errorf("initialising SCM provider: %w", err)
 		}
+		r.log.Debug("SCM provider initialised", map[string]any{"provider": cfg.SCM.Provider})
 	}
 
 	if cfg.Tracker.Provider != "" {
@@ -368,6 +371,7 @@ func (r *releaseRunner) initialize() error {
 		if err != nil {
 			return fmt.Errorf("initialising tracker: %w", err)
 		}
+		r.log.Debug("tracker initialised", map[string]any{"provider": cfg.Tracker.Provider})
 	}
 
 	n := cfg.Notify
@@ -415,8 +419,16 @@ func (r *releaseRunner) initialize() error {
 		if err != nil {
 			return fmt.Errorf("initialising notifier: %w", err)
 		}
+		r.log.Debug("notifier initialised")
 	}
 
+	r.log.Debug("config loaded", map[string]any{
+		"strategy":    branchStrategy,
+		"scheme":      cfg.Versioning.Scheme,
+		"scm":         cfg.SCM.Provider,
+		"tracker":     cfg.Tracker.Provider,
+		"working_dir": r.workingDir,
+	})
 	return nil
 }
 
@@ -439,6 +451,10 @@ func (r *releaseRunner) detectVersion() error {
 			return fmt.Errorf("snapshotting %s HEAD: %w", r.cfg.Git.DevelopmentBranch, err)
 		}
 	}
+	r.log.Debug("HEAD refs snapshotted", map[string]any{
+		"main": r.mainHeadSHA,
+		"dev":  r.devHeadSHA,
+	})
 
 	switch r.cfg.Versioning.Scheme {
 	case "calver":
@@ -465,6 +481,7 @@ func (r *releaseRunner) detectVersion() error {
 		if err != nil {
 			return fmt.Errorf("parsing initial version %q: %w", initial, err)
 		}
+		r.log.Info("initial version set by user", map[string]any{"version": r.currentVersion.String()})
 	} else {
 		r.currentVersion, err = r.scheme.Parse(latestTag)
 		if err != nil {
@@ -484,6 +501,11 @@ func (r *releaseRunner) detectVersion() error {
 		r.vprintf("Current version: %s (tag %s)\n", r.currentVersion.String(), latestTag)
 	}
 	r.vprintf("Commits analyzed: %d\n", len(commits))
+	r.log.Info("version detected", map[string]any{
+		"current": r.currentVersion.String(),
+		"tag":     latestTag,
+		"commits": len(commits),
+	})
 	return nil
 }
 
@@ -498,24 +520,25 @@ func (r *releaseRunner) recommendVersion() error {
 	}
 	r.nextVersion = next
 
-	if r.verbose {
-		var feat, fix, breaking, other int
-		for _, c := range r.parsedCommits {
-			switch {
-			case c.Breaking:
-				breaking++
-			case c.Type == "feat":
-				feat++
-			case c.Type == "fix":
-				fix++
-			default:
-				other++
-			}
+	var feat, fix, breaking, other int
+	for _, c := range r.parsedCommits {
+		switch {
+		case c.Breaking:
+			breaking++
+		case c.Type == "feat":
+			feat++
+		case c.Type == "fix":
+			fix++
+		default:
+			other++
 		}
+	}
+	if r.verbose {
 		r.vprintf("feat: %d  fix: %d  breaking: %d  other: %d\n", feat, fix, breaking, other)
 	}
 
 	if bump == versioning.BumpNone {
+		r.log.Warn("no releasable commits found")
 		if !r.quiet {
 			fmt.Println(ui.Warning("No releasable commits found — no version bump is required."))
 		}
@@ -525,9 +548,11 @@ func (r *releaseRunner) recommendVersion() error {
 				return err
 			}
 			if !ok {
+				r.log.Warn("release cancelled by user at no-version-bump gate")
 				return fmt.Errorf("release cancelled")
 			}
 		}
+		r.log.Info("proceeding with no version bump")
 	}
 
 	bumpLabel := map[versioning.BumpKind]string{
@@ -536,6 +561,14 @@ func (r *releaseRunner) recommendVersion() error {
 		versioning.BumpMinor: "minor",
 		versioning.BumpMajor: "major",
 	}[bump]
+
+	r.log.Info("version recommended", map[string]any{
+		"bump":     bumpLabel,
+		"next":     r.nextVersion.String(),
+		"feat":     feat,
+		"fix":      fix,
+		"breaking": breaking,
+	})
 
 	if !r.quiet {
 		fmt.Printf("Current version : %s\nRecommended bump: %s\nNext version    : %s\n",
@@ -560,6 +593,7 @@ func (r *releaseRunner) confirmVersion() error {
 			return fmt.Errorf("invalid version %q: %w", override, err)
 		}
 		r.nextVersion = parsed
+		r.log.Info("version overridden by user", map[string]any{"version": r.nextVersion.String()})
 	}
 	return nil
 }
@@ -591,6 +625,7 @@ func (r *releaseRunner) createReleaseBranch() error {
 		return fmt.Errorf("creating release branch: %w", err)
 	}
 	r.releaseBranchCreated = true
+	r.log.Info("release branch created", map[string]any{"branch": r.releaseBranch})
 	return nil
 }
 
@@ -621,6 +656,7 @@ func (r *releaseRunner) mergeMainIntoRelease() error {
 
 	err := r.git.Merge(r.cfg.Git.DefaultBranch)
 	if err == nil {
+		r.log.Debug("main merged into release", map[string]any{"source": r.cfg.Git.DefaultBranch})
 		return nil
 	}
 
@@ -645,6 +681,7 @@ func (r *releaseRunner) resolveConflicts(conflicted []string) error {
 		return err
 	}
 	if !ok {
+		r.log.Warn("merge conflict resolution declined by user")
 		return fmt.Errorf("merge conflict resolution declined — resolve manually and retry")
 	}
 
@@ -662,6 +699,7 @@ func (r *releaseRunner) resolveConflicts(conflicted []string) error {
 	if err := r.git.Add("."); err != nil {
 		return fmt.Errorf("staging resolved conflicts: %w", err)
 	}
+	r.log.Info("merge conflicts auto-resolved", map[string]any{"count": len(conflicted)})
 	return nil
 }
 
@@ -691,6 +729,7 @@ func (r *releaseRunner) trackerCreateVersion() error {
 		}
 		if selected != createNew {
 			r.trackerVersionID = selected
+			r.log.Info("tracker version ready", map[string]any{"id": r.trackerVersionID, "version": r.nextVersion.String()})
 			return nil
 		}
 	}
@@ -701,6 +740,7 @@ func (r *releaseRunner) trackerCreateVersion() error {
 			return err
 		}
 		if !ok {
+			r.log.Info("tracker version creation skipped by user")
 			return nil
 		}
 	}
@@ -718,6 +758,7 @@ func (r *releaseRunner) trackerCreateVersion() error {
 		return fmt.Errorf("creating tracker version: %w", err)
 	}
 	r.trackerVersionID = id
+	r.log.Info("tracker version ready", map[string]any{"id": r.trackerVersionID, "version": r.nextVersion.String()})
 	return nil
 }
 
@@ -756,6 +797,7 @@ func (r *releaseRunner) trackerAssignTickets() error {
 			return err
 		}
 		if !ok {
+			r.log.Info("ticket assignment skipped by user")
 			return nil
 		}
 	}
@@ -774,6 +816,7 @@ func (r *releaseRunner) trackerAssignTickets() error {
 	if err := r.trackerProvider.AssignTickets(assignRefs, r.trackerVersionID); err != nil {
 		return fmt.Errorf("assigning tickets to tracker version: %w", err)
 	}
+	r.log.Info("tickets assigned", map[string]any{"count": len(assignRefs), "version": r.nextVersion.String()})
 	return nil
 }
 
@@ -800,6 +843,7 @@ func (r *releaseRunner) updateChangelog() error {
 		return fmt.Errorf("updating changelog: %w", err)
 	}
 	r.changedFiles = append(r.changedFiles, changelogPath)
+	r.log.Info("changelog updated", map[string]any{"path": changelogPath, "version": r.nextVersion.String()})
 	return nil
 }
 
@@ -814,12 +858,14 @@ func (r *releaseRunner) applySubstitutions() error {
 		return nil
 	}
 
+	before := len(r.changedFiles)
 	if err := r.substitutePlaceholders(); err != nil {
 		return err
 	}
 	if err := r.updateManifestVersion(); err != nil {
 		return err
 	}
+	r.log.Info("substitutions applied", map[string]any{"files": len(r.changedFiles) - before})
 	return nil
 }
 
@@ -943,7 +989,11 @@ func (r *releaseRunner) runSecretsScan() error {
 		return nil
 	}
 	r.print("Scanning for secrets")
-	return tasks.RunSecretsScan(r.workingDir, r.verbose)
+	if err := tasks.RunSecretsScan(r.workingDir, r.verbose); err != nil {
+		return err
+	}
+	r.log.Info("secrets scan passed")
+	return nil
 }
 
 func (r *releaseRunner) runBuildTasks() error {
@@ -1015,6 +1065,7 @@ func (r *releaseRunner) reviewGate() error {
 	if !ok {
 		return fmt.Errorf("release cancelled at review gate")
 	}
+	r.log.Info("review gate passed by user")
 
 	if len(r.changedFiles) > 0 {
 		if err := r.git.Add(r.changedFiles...); err != nil {
@@ -1050,6 +1101,7 @@ func (r *releaseRunner) commitRelease() error {
 	if err := r.git.Commit(message); err != nil {
 		return fmt.Errorf("committing release changes: %w", err)
 	}
+	r.log.Info("release committed", map[string]any{"subject": subject})
 	return nil
 }
 
@@ -1068,6 +1120,7 @@ func (r *releaseRunner) tagRelease() error {
 		return fmt.Errorf("creating tag %s: %w", r.tag, err)
 	}
 	r.tagCreated = true
+	r.log.Info("release tagged", map[string]any{"tag": r.tag})
 	return nil
 }
 
@@ -1087,7 +1140,11 @@ func (r *releaseRunner) mergeIntoMain() error {
 	}
 
 	if r.singleBranch {
-		return r.git.Merge(r.releaseBranch, "--no-ff", "--no-edit")
+		if err := r.git.Merge(r.releaseBranch, "--no-ff", "--no-edit"); err != nil {
+			return err
+		}
+		r.log.Info("merged into main", map[string]any{"target": r.cfg.Git.DefaultBranch})
+		return nil
 	}
 
 	if err := r.git.Merge(r.releaseBranch, "--squash"); err != nil {
@@ -1100,7 +1157,11 @@ func (r *releaseRunner) mergeIntoMain() error {
 
 	subject := strings.ReplaceAll(r.cfg.Git.ReleaseCommitTemplate, "{{tag}}", r.tag)
 	message := subject + "\n\n" + r.coAuthorTrailers()
-	return r.git.Commit(message)
+	if err := r.git.Commit(message); err != nil {
+		return fmt.Errorf("committing squash merge into %s: %w", r.cfg.Git.DefaultBranch, err)
+	}
+	r.log.Info("merged into main", map[string]any{"target": r.cfg.Git.DefaultBranch})
+	return nil
 }
 
 func (r *releaseRunner) verifySquashCommitFiles() error {
@@ -1155,6 +1216,7 @@ func (r *releaseRunner) mergeIntoDev() error {
 	if err := r.git.Merge(r.releaseBranch, "--no-ff", "--no-edit"); err != nil {
 		return fmt.Errorf("merging release branch into %s: %w", r.cfg.Git.DevelopmentBranch, err)
 	}
+	r.log.Info("merged into dev", map[string]any{"target": r.cfg.Git.DevelopmentBranch})
 	return nil
 }
 
@@ -1177,6 +1239,9 @@ func (r *releaseRunner) cleanupReleaseBranch() error {
 		if !r.quiet {
 			fmt.Println(ui.Warning(fmt.Sprintf("Could not delete release branch %s: %v", r.releaseBranch, err)))
 		}
+		r.log.Warn("could not delete release branch", map[string]any{"branch": r.releaseBranch, "error": err})
+	} else {
+		r.log.Debug("release branch deleted", map[string]any{"branch": r.releaseBranch})
 	}
 	return nil
 }
@@ -1199,6 +1264,8 @@ func (r *releaseRunner) push() error {
 		if err := r.pushBranches(); err != nil {
 			return err
 		}
+	} else {
+		r.log.Info("branch push skipped by user")
 	}
 
 	okTag, err := ui.Confirm(
@@ -1212,6 +1279,8 @@ func (r *releaseRunner) push() error {
 		if err := r.pushTag(); err != nil {
 			return err
 		}
+	} else {
+		r.log.Info("tag push skipped by user")
 	}
 
 	return nil
@@ -1237,6 +1306,7 @@ func (r *releaseRunner) pushBranches() error {
 			return fmt.Errorf("pushing %s: %w", r.cfg.Git.DevelopmentBranch, err)
 		}
 	}
+	r.log.Info("branches pushed", map[string]any{"remote": remote})
 
 	if err := r.pushToExtraRemotes(r.cfg.Git.DefaultBranch); err != nil {
 		return err
@@ -1256,6 +1326,7 @@ func (r *releaseRunner) pushTag() error {
 	if err := r.git.Push(remote, r.tag); err != nil {
 		return fmt.Errorf("pushing tag %s: %w", r.tag, err)
 	}
+	r.log.Info("tag pushed", map[string]any{"remote": remote, "tag": r.tag})
 
 	if err := r.pushToExtraRemotes(r.tag); err != nil {
 		return err
@@ -1301,6 +1372,7 @@ func (r *releaseRunner) pushToExtraRemotes(ref string) error {
 			continue
 		}
 		if err := r.git.Push(rem, ref); err != nil {
+			r.log.Warn("could not push to extra remote", map[string]any{"ref": ref, "remote": rem, "error": err})
 			if !r.quiet {
 				fmt.Println(ui.Warning(fmt.Sprintf("Could not push %s to %s: %v", ref, rem, err)))
 			}
@@ -1322,6 +1394,7 @@ func (r *releaseRunner) trackerCloseVersion() error {
 			return err
 		}
 		if !ok {
+			r.log.Info("tracker version close skipped by user")
 			return nil
 		}
 	}
@@ -1336,6 +1409,7 @@ func (r *releaseRunner) trackerCloseVersion() error {
 	if err := r.trackerProvider.CloseVersion(r.trackerVersionID); err != nil {
 		return fmt.Errorf("closing tracker version: %w", err)
 	}
+	r.log.Info("tracker version closed", map[string]any{"id": r.trackerVersionID, "version": r.nextVersion.String()})
 	return nil
 }
 
@@ -1363,6 +1437,7 @@ func (r *releaseRunner) scmCreateRelease() error {
 			return err
 		}
 		if !ok {
+			r.log.Info("SCM release creation skipped by user")
 			return nil
 		}
 	}
@@ -1372,6 +1447,7 @@ func (r *releaseRunner) scmCreateRelease() error {
 		return fmt.Errorf("creating SCM release: %w", err)
 	}
 	r.scmReleaseURL = releaseURL
+	r.log.Info("SCM release created", map[string]any{"provider": r.cfg.SCM.Provider, "url": releaseURL})
 	if !r.quiet {
 		fmt.Printf("Release published: %s\n", releaseURL)
 	}
@@ -1389,6 +1465,7 @@ func (r *releaseRunner) sendNotifications() {
 		return
 	}
 
+	r.log.Debug("dispatching notifications")
 	entry := versioning.ChangelogFromCommits(r.nextVersion.String(), time.Now(), r.parsedCommits)
 	if err := r.notifier.Notify(notify.Event{
 		Type:    notify.EventReleaseComplete,
@@ -1396,8 +1473,11 @@ func (r *releaseRunner) sendNotifications() {
 		Version: r.nextVersion.String(),
 		URL:     r.scmReleaseURL,
 		Body:    entry.Render(),
-	}); err != nil && !r.quiet {
-		fmt.Printf("Warning: notification error: %s\n", err)
+	}); err != nil {
+		r.log.Warn("notification error", map[string]any{"error": err})
+		if !r.quiet {
+			fmt.Printf("Warning: notification error: %s\n", err)
+		}
 	}
 }
 
@@ -1435,6 +1515,7 @@ func (r *releaseRunner) rollback() {
 	if r.completed {
 		return
 	}
+	r.log.Warn("rollback triggered", map[string]any{"main_sha": r.mainHeadSHA, "tag": r.tag})
 	fmt.Println(ui.Warning("Rolling back release — restoring branches to pre-release state..."))
 
 	if r.mainHeadSHA != "" {
