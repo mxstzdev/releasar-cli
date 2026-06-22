@@ -4,22 +4,22 @@
 > Releasar is currently under active development and not yet production-ready.
 > APIs and configuration formats may change without notice until the first stable release.
 
-Releasar is a cross-platform project release tool for Git based projects written in Go.
+Releasar is a local-first CI/CD tool for deployment automation of Git-based projects. It runs entirely on your machine — no pipeline, no cloud runner.
 
-It helps you as a software developer to automate your project release workflow without requiring a CI/CD pipeline, but offers some powerful features such as:
+It automates the full release workflow from version recommendation to SCM publishing, with features such as:
 
-- 🪐 [Monorepo](https://en.wikipedia.org/wiki/Monorepo) & [Monolith](https://en.wikipedia.org/wiki/Monolithic_application) repository architecture support
+- 🪐 [Monorepo](https://en.wikipedia.org/wiki/Monorepo) & single-repo architecture support
 - 🔣 [Semantic Versioning (SemVer)](https://semver.org) & [Calendar Versioning (CalVer)](https://calver.org) support
-- 🔀 Release branch management *(with environment restore)*
-- ✨ Release version recommendation
+- 🔀 Full release branch management *(including rollback on failure)*
+- ✨ Conventional Commits-based version recommendation
 - 🤖 Automatic CHANGELOG updates
-- *️⃣ Version placeholders *(e.g., `{{RLSR_LATEST}}`, `{{RLSR_NEXT.MAJOR}}`, ...)*
+- *️⃣ Version placeholder substitution *(e.g., `{{RLSR_LATEST}}`, `{{RLSR_NEXT.MAJOR}}`, ...)*
 - 📦 Package manager auto-detection & integration *(npm, Yarn, pnpm, Bun, Composer, ...)*
 - 🎫 Issue tracker integration *(GitHub Issues, Gitea/Forgejo/Codeberg, Jira, OpenProject)*
-- 🖥️ Support of various popular SCM providers *(GitHub, GitLab, Gitea, Forgejo/Codeberg)*
-- 🔐 Secret scanning *(pre-release credential leak detection via built-in [gitleaks](https://github.com/gitleaks/gitleaks))*
-- 🧪 Tests tasks auto-detection & execution
-- 🚧 Build tasks execution
+- 🖥️ Multi-provider SCM support *(GitHub, GitLab, Gitea, Forgejo/Codeberg)*
+- 🔐 Secret scanning *(via built-in [gitleaks](https://github.com/gitleaks/gitleaks))*
+- 🚧 Build task execution
+- 🧪 Test suite auto-detection & execution
 - 🔔 Post-release notifications *(Email, Telegram, Slack, desktop, and generic webhooks)*
 
 ## Support
