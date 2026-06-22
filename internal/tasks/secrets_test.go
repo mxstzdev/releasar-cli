@@ -46,7 +46,7 @@ func TestRunSecretScan(t *testing.T) {
 				require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 			}
 
-			err := RunSecretScan(dir, false)
+			err := RunSecretsScan(dir, false)
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errSubstr)
@@ -68,6 +68,6 @@ func TestRunSecretScanCustomConfig(t *testing.T) {
 	// AWS key that default rules would catch; custom zero-rule config ignores it.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "creds.env"), []byte("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7ABCDE23\n"), 0o600))
 
-	err := RunSecretScan(dir, false)
+	err := RunSecretsScan(dir, false)
 	assert.NoError(t, err, "custom config with no rules should suppress all detections")
 }

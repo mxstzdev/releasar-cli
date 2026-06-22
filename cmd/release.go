@@ -167,7 +167,7 @@ func (r *releaseRunner) run() error {
 
 	r.tag = r.cfg.Git.TagPrefix + r.nextVersion.String()
 
-	if err := r.runSecretScan(); err != nil {
+	if err := r.runSecretsScan(); err != nil {
 		return err
 	}
 
@@ -938,12 +938,12 @@ func detectIndent(data []byte) string {
 	return "  "
 }
 
-func (r *releaseRunner) runSecretScan() error {
+func (r *releaseRunner) runSecretsScan() error {
 	if !r.cfg.Tasks.SecretScanning {
 		return nil
 	}
 	r.print("Scanning for secrets")
-	return tasks.RunSecretScan(r.workingDir, r.verbose)
+	return tasks.RunSecretsScan(r.workingDir, r.verbose)
 }
 
 func (r *releaseRunner) runBuildTasks() error {

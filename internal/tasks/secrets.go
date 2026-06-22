@@ -6,19 +6,19 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/rs/zerolog"
+	"github.com/spf13/viper"
 	glconfig "github.com/zricethezav/gitleaks/v8/config"
 	"github.com/zricethezav/gitleaks/v8/detect"
 	gllogging "github.com/zricethezav/gitleaks/v8/logging"
 	"github.com/zricethezav/gitleaks/v8/report"
 	"github.com/zricethezav/gitleaks/v8/sources"
-	"github.com/rs/zerolog"
-	"github.com/spf13/viper"
 )
 
-// RunSecretScan scans sourceDir for secrets using gitleaks rules.
+// RunSecretsScan scans sourceDir for secrets using gitleaks rules.
 // It auto-detects .gitleaks.toml in sourceDir; otherwise built-in rules apply.
 // Findings are reported by rule ID, file, and line — secret values are never printed.
-func RunSecretScan(sourceDir string, verbose bool) error {
+func RunSecretsScan(sourceDir string, verbose bool) error {
 	// Silence gitleaks' own logging so releasar controls all terminal output.
 	saved := gllogging.Logger
 	gllogging.Logger = gllogging.Logger.Level(zerolog.Disabled)

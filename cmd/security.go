@@ -22,5 +22,5 @@ func runAudit(_ *cobra.Command, _ []string) error {
 	if source == "" {
 		source = "."
 	}
-	return tasks.RunSecretScan(source, flagVerbosity > 0)
+	return tasks.RunSecretsScan(source, flagVerbosity > 0)
 }
