@@ -15,9 +15,8 @@ const (
 	kindTip
 	kindImportant
 	kindWarning
+	kindError
 	kindCaution
-	kindSuccess
-	kindFailure
 )
 
 var alertMeta = map[alertKind]struct {
@@ -29,9 +28,8 @@ var alertMeta = map[alertKind]struct {
 	kindTip:       {"Tip", "✦", lipgloss.Color("#22C55E")},
 	kindImportant: {"Important", "★", lipgloss.Color("#A855F7")},
 	kindWarning:   {"Warning", "⚠", lipgloss.Color("#F59E0B")},
-	kindCaution:   {"Caution", "✖", lipgloss.Color("#EF4444")},
-	kindSuccess:   {"Success", "✓", lipgloss.Color("#22C55E")},
-	kindFailure:   {"Failure", "✗", lipgloss.Color("#EF4444")},
+	kindError:     {"Error", "", lipgloss.Color("#EF4444")},
+	kindCaution:   {"Caution", "✗", lipgloss.Color("#EF4444")},
 }
 
 func contentWidth() int {
@@ -45,8 +43,11 @@ func contentWidth() int {
 	return w
 }
 
-func alert(kind alertKind, msg string) string {
+func alert(kind alertKind, title, msg string) string {
 	meta := alertMeta[kind]
+	if title == "" {
+		title = meta.title
+	}
 
 	titleStyle := lipgloss.NewStyle().
 		Foreground(meta.color).
@@ -62,27 +63,37 @@ func alert(kind alertKind, msg string) string {
 		PaddingLeft(1).
 		Width(innerWidth)
 
-	title := titleStyle.Render(fmt.Sprintf("%s %s", meta.icon, meta.title))
-	return boxStyle.Render(title + "\n" + msg)
+	var renderedTitle string
+	if meta.icon != "" {
+		renderedTitle = titleStyle.Render(fmt.Sprintf("%s %s", meta.icon, title))
+	} else {
+		renderedTitle = titleStyle.Render(title)
+	}
+
+	return boxStyle.Render(renderedTitle + "\n" + msg)
 }
 
-// Note renders a blue informational alert.
-func Note(msg string) string { return alert(kindNote, msg) }
+func firstOf(ss []string) string {
+	if len(ss) > 0 {
+		return ss[0]
+	}
+	return ""
+}
 
-// Tip renders a green tip alert.
-func Tip(msg string) string { return alert(kindTip, msg) }
+// Note renders a blue informational alert. An optional title overrides the default "Note" heading.
+func Note(msg string, title ...string) string { return alert(kindNote, firstOf(title), msg) }
 
-// Important renders a purple important alert.
-func Important(msg string) string { return alert(kindImportant, msg) }
+// Tip renders a green tip alert. An optional title overrides the default "Tip" heading.
+func Tip(msg string, title ...string) string { return alert(kindTip, firstOf(title), msg) }
 
-// Warning renders an amber warning alert.
-func Warning(msg string) string { return alert(kindWarning, msg) }
+// Important renders a purple important alert. An optional title overrides the default "Important" heading.
+func Important(msg string, title ...string) string { return alert(kindImportant, firstOf(title), msg) }
 
-// Caution renders a red caution alert.
-func Caution(msg string) string { return alert(kindCaution, msg) }
+// Warning renders an amber warning alert. An optional title overrides the default "Warning" heading.
+func Warning(msg string, title ...string) string { return alert(kindWarning, firstOf(title), msg) }
 
-// Success renders a green success alert.
-func Success(msg string) string { return alert(kindSuccess, msg) }
+// Error renders a red alert without icon. An optional title overrides the default "Error" heading.
+func Error(msg string, title ...string) string { return alert(kindError, firstOf(title), msg) }
 
-// Failure renders a red failure alert.
-func Failure(msg string) string { return alert(kindFailure, msg) }
+// Caution renders a red caution alert. An optional title overrides the default "Caution" heading.
+func Caution(msg string, title ...string) string { return alert(kindCaution, firstOf(title), msg) }

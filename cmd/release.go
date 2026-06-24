@@ -121,6 +121,19 @@ func (r *releaseRunner) print(title string, desc ...string) {
 	}
 }
 
+func (r *releaseRunner) printSuccess(title string, desc ...string) {
+	if !r.quiet {
+		ui.PrintSuccess(title, desc...)
+	}
+}
+
+func (r *releaseRunner) printError(err error) error {
+	if !r.quiet {
+		fmt.Println(ui.Error(err.Error()))
+	}
+	return err
+}
+
 func (r *releaseRunner) run() error {
 	if err := r.initialize(); err != nil {
 		return err
@@ -133,13 +146,13 @@ func (r *releaseRunner) run() error {
 	defer r.rollback()
 
 	if r.versionFlag != "" && r.bumpArg != "" {
-		return fmt.Errorf("cannot combine --version with a positional bump argument")
+		return r.printError(fmt.Errorf("cannot combine --version with a positional bump argument"))
 	}
 
 	if r.versionFlag != "" {
 		parsed, err := r.scheme.Parse(r.versionFlag)
 		if err != nil {
-			return fmt.Errorf("invalid version %q: %w", r.versionFlag, err)
+			return r.printError(fmt.Errorf("invalid version %q: %w", r.versionFlag, err))
 		}
 		r.nextVersion = parsed
 		r.log.Info("version overridden via flag", map[string]any{"version": r.nextVersion.String()})
@@ -147,7 +160,7 @@ func (r *releaseRunner) run() error {
 		bump := bumpKindFromArg(r.bumpArg)
 		next, err := r.currentVersion.Increment(bump)
 		if err != nil {
-			return fmt.Errorf("computing next version: %w", err)
+			return r.printError(fmt.Errorf("computing next version: %w", err))
 		}
 		r.nextVersion = next
 		r.log.Info("version set via bump argument", map[string]any{"bump": r.bumpArg, "version": r.nextVersion.String()})
@@ -248,18 +261,18 @@ func (r *releaseRunner) initialize() error {
 	r.print("Initializing")
 
 	if _, err := exec.LookPath("git"); err != nil {
-		return fmt.Errorf("git is not installed or not in PATH")
+		return r.printError(fmt.Errorf("git is not installed or not in PATH"))
 	}
 
 	cwd, err := os.Getwd()
 	if err != nil {
-		return fmt.Errorf("getting working directory: %w", err)
+		return r.printError(fmt.Errorf("getting working directory: %w", err))
 	}
 
 	if r.workingDirFlag != "" {
 		abs, err := filepath.Abs(r.workingDirFlag)
 		if err != nil {
-			return fmt.Errorf("resolving working directory: %w", err)
+			return r.printError(fmt.Errorf("resolving working directory: %w", err))
 		}
 		r.workingDir = abs
 	} else {
@@ -268,7 +281,7 @@ func (r *releaseRunner) initialize() error {
 
 	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
-		return fmt.Errorf("not inside a git repository")
+		return r.printError(fmt.Errorf("not inside a git repository"))
 	}
 	r.repoRoot = strings.TrimSpace(string(out))
 
@@ -281,12 +294,12 @@ func (r *releaseRunner) initialize() error {
 			return err
 		}
 		if !ok {
-			return fmt.Errorf("release cancelled — adjust your working directory and retry")
+			return r.printError(fmt.Errorf("release cancelled — adjust your working directory and retry"))
 		}
 	}
 
 	if err := config.LoadDotEnv(r.repoRoot, r.workingDir); err != nil {
-		return fmt.Errorf("loading .env: %w", err)
+		return r.printError(fmt.Errorf("loading .env: %w", err))
 	}
 
 	var cfg *config.Config
@@ -296,7 +309,7 @@ func (r *releaseRunner) initialize() error {
 		cfg, err = config.LoadLayered(r.repoRoot, r.workingDir)
 	}
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		return r.printError(fmt.Errorf("loading config: %w", err))
 	}
 	r.cfg = cfg
 
@@ -321,7 +334,7 @@ func (r *releaseRunner) initialize() error {
 	}
 	r.git, err = git.New(r.repoRoot, gitCfg, log.Get("git"))
 	if err != nil {
-		return fmt.Errorf("initialising git client: %w", err)
+		return r.printError(fmt.Errorf("initialising git client: %w", err))
 	}
 
 	branchStrategy := "git-flow"
@@ -335,12 +348,12 @@ func (r *releaseRunner) initialize() error {
 	if cfg.SCM.Provider != "" || cfg.Tracker.Provider != "" {
 		remoteURL, err := r.git.RemoteURL(cfg.Git.Remote)
 		if err != nil {
-			return fmt.Errorf("resolving remote URL: %w", err)
+			return r.printError(fmt.Errorf("resolving remote URL: %w", err))
 		}
 		var parseErr error
 		owner, repo, parseErr = scm.ParseRemoteURL(remoteURL)
 		if parseErr != nil {
-			return fmt.Errorf("parsing remote URL: %w", parseErr)
+			return r.printError(fmt.Errorf("parsing remote URL: %w", parseErr))
 		}
 	}
 
@@ -353,7 +366,7 @@ func (r *releaseRunner) initialize() error {
 			Repo:  repo,
 		}, log.Get("scm"))
 		if err != nil {
-			return fmt.Errorf("initialising SCM provider: %w", err)
+			return r.printError(fmt.Errorf("initialising SCM provider: %w", err))
 		}
 		r.log.Debug("SCM provider initialised", map[string]any{"provider": cfg.SCM.Provider})
 	}
@@ -369,7 +382,7 @@ func (r *releaseRunner) initialize() error {
 			Repo:       repo,
 		}, log.Get("tracker"))
 		if err != nil {
-			return fmt.Errorf("initialising tracker: %w", err)
+			return r.printError(fmt.Errorf("initialising tracker: %w", err))
 		}
 		r.log.Debug("tracker initialised", map[string]any{"provider": cfg.Tracker.Provider})
 	}
@@ -417,7 +430,7 @@ func (r *releaseRunner) initialize() error {
 		var err error
 		r.notifier, err = notify.Build(notifyCfg, log.Get("notify"))
 		if err != nil {
-			return fmt.Errorf("initialising notifier: %w", err)
+			return r.printError(fmt.Errorf("initialising notifier: %w", err))
 		}
 		r.log.Debug("notifier initialised")
 	}
@@ -437,18 +450,18 @@ func (r *releaseRunner) detectVersion() error {
 
 	branch, err := r.git.CurrentBranch()
 	if err != nil {
-		return fmt.Errorf("detecting current branch: %w", err)
+		return r.printError(fmt.Errorf("detecting current branch: %w", err))
 	}
 	r.originalBranch = branch
 
 	r.mainHeadSHA, err = r.git.RevParse(r.cfg.Git.DefaultBranch)
 	if err != nil {
-		return fmt.Errorf("snapshotting %s HEAD: %w", r.cfg.Git.DefaultBranch, err)
+		return r.printError(fmt.Errorf("snapshotting %s HEAD: %w", r.cfg.Git.DefaultBranch, err))
 	}
 	if !r.singleBranch {
 		r.devHeadSHA, err = r.git.RevParse(r.cfg.Git.DevelopmentBranch)
 		if err != nil {
-			return fmt.Errorf("snapshotting %s HEAD: %w", r.cfg.Git.DevelopmentBranch, err)
+			return r.printError(fmt.Errorf("snapshotting %s HEAD: %w", r.cfg.Git.DevelopmentBranch, err))
 		}
 	}
 	r.log.Debug("HEAD refs snapshotted", map[string]any{
@@ -465,13 +478,13 @@ func (r *releaseRunner) detectVersion() error {
 
 	latestTag, err := r.git.LatestTag()
 	if err != nil {
-		return fmt.Errorf("detecting latest tag: %w", err)
+		return r.printError(fmt.Errorf("detecting latest tag: %w", err))
 	}
 
 	if latestTag == "" {
 		initial, err := ui.Input(
-			"No previous tag reference found",
 			"Enter the initial version",
+			"No previous tag reference where found",
 			"0.1.0",
 		)
 		if err != nil {
@@ -479,19 +492,19 @@ func (r *releaseRunner) detectVersion() error {
 		}
 		r.currentVersion, err = r.scheme.Parse(initial)
 		if err != nil {
-			return fmt.Errorf("parsing initial version %q: %w", initial, err)
+			return r.printError(fmt.Errorf("parsing initial version %q: %w", initial, err))
 		}
 		r.log.Info("initial version set by user", map[string]any{"version": r.currentVersion.String()})
 	} else {
 		r.currentVersion, err = r.scheme.Parse(latestTag)
 		if err != nil {
-			return fmt.Errorf("parsing latest tag %q: %w", latestTag, err)
+			return r.printError(fmt.Errorf("parsing latest tag %q: %w", latestTag, err))
 		}
 	}
 
 	commits, err := r.git.Log(latestTag)
 	if err != nil {
-		return fmt.Errorf("reading commit log: %w", err)
+		return r.printError(fmt.Errorf("reading commit log: %w", err))
 	}
 	r.parsedCommits = versioning.ParseCommits(commits)
 
@@ -516,7 +529,7 @@ func (r *releaseRunner) recommendVersion() error {
 
 	next, err := r.currentVersion.Increment(bump)
 	if err != nil {
-		return fmt.Errorf("computing next version: %w", err)
+		return r.printError(fmt.Errorf("computing next version: %w", err))
 	}
 	r.nextVersion = next
 
@@ -549,7 +562,7 @@ func (r *releaseRunner) recommendVersion() error {
 			}
 			if !ok {
 				r.log.Warn("release cancelled by user at no-version-bump gate")
-				return fmt.Errorf("release cancelled")
+				return r.printError(fmt.Errorf("release cancelled"))
 			}
 		}
 		r.log.Info("proceeding with no version bump")
@@ -590,7 +603,7 @@ func (r *releaseRunner) confirmVersion() error {
 	if override != "" && override != r.nextVersion.String() {
 		parsed, err := r.scheme.Parse(override)
 		if err != nil {
-			return fmt.Errorf("invalid version %q: %w", override, err)
+			return r.printError(fmt.Errorf("invalid version %q: %w", override, err))
 		}
 		r.nextVersion = parsed
 		r.log.Info("version overridden by user", map[string]any{"version": r.nextVersion.String()})
@@ -622,7 +635,7 @@ func (r *releaseRunner) createReleaseBranch() error {
 	}
 
 	if err := r.git.CreateBranch(r.releaseBranch, r.cfg.Git.DevelopmentBranch); err != nil {
-		return fmt.Errorf("creating release branch: %w", err)
+		return r.printError(fmt.Errorf("creating release branch: %w", err))
 	}
 	r.releaseBranchCreated = true
 	r.log.Info("release branch created", map[string]any{"branch": r.releaseBranch})
@@ -662,7 +675,7 @@ func (r *releaseRunner) mergeMainIntoRelease() error {
 
 	conflicted, cerr := r.git.ConflictedFiles()
 	if cerr != nil || len(conflicted) == 0 {
-		return fmt.Errorf("merging %s into release branch: %w", r.cfg.Git.DefaultBranch, err)
+		return r.printError(fmt.Errorf("merging %s into release branch: %w", r.cfg.Git.DefaultBranch, err))
 	}
 
 	return r.resolveConflicts(conflicted)
@@ -682,7 +695,7 @@ func (r *releaseRunner) resolveConflicts(conflicted []string) error {
 	}
 	if !ok {
 		r.log.Warn("merge conflict resolution declined by user")
-		return fmt.Errorf("merge conflict resolution declined — resolve manually and retry")
+		return r.printError(fmt.Errorf("merge conflict resolution declined — resolve manually and retry"))
 	}
 
 	for _, file := range conflicted {
@@ -693,11 +706,11 @@ func (r *releaseRunner) resolveConflicts(conflicted []string) error {
 			strategy = "--ours"
 		}
 		if err := r.git.Checkout(strategy, file); err != nil {
-			return fmt.Errorf("resolving conflict in %s: %w", file, err)
+			return r.printError(fmt.Errorf("resolving conflict in %s: %w", file, err))
 		}
 	}
 	if err := r.git.Add("."); err != nil {
-		return fmt.Errorf("staging resolved conflicts: %w", err)
+		return r.printError(fmt.Errorf("staging resolved conflicts: %w", err))
 	}
 	r.log.Info("merge conflicts auto-resolved", map[string]any{"count": len(conflicted)})
 	return nil
@@ -711,7 +724,7 @@ func (r *releaseRunner) trackerCreateVersion() error {
 
 	versions, err := r.trackerProvider.ListVersions()
 	if err != nil {
-		return fmt.Errorf("listing tracker versions: %w", err)
+		return r.printError(fmt.Errorf("listing tracker versions: %w", err))
 	}
 
 	if len(versions) > 0 {
@@ -755,7 +768,7 @@ func (r *releaseRunner) trackerCreateVersion() error {
 	desc := fmt.Sprintf("Generated by releasar v%s", appVersion)
 	id, err := r.trackerProvider.CreateVersion(r.nextVersion.String(), desc)
 	if err != nil {
-		return fmt.Errorf("creating tracker version: %w", err)
+		return r.printError(fmt.Errorf("creating tracker version: %w", err))
 	}
 	r.trackerVersionID = id
 	r.log.Info("tracker version ready", map[string]any{"id": r.trackerVersionID, "version": r.nextVersion.String()})
@@ -777,7 +790,7 @@ func (r *releaseRunner) trackerAssignTickets() error {
 
 	resolved, err := r.trackerProvider.ResolveRefs(refs)
 	if err != nil {
-		return fmt.Errorf("resolving ticket refs: %w", err)
+		return r.printError(fmt.Errorf("resolving ticket refs: %w", err))
 	}
 	if len(resolved) == 0 {
 		return nil
@@ -814,7 +827,7 @@ func (r *releaseRunner) trackerAssignTickets() error {
 		assignRefs[i] = ref.Ref
 	}
 	if err := r.trackerProvider.AssignTickets(assignRefs, r.trackerVersionID); err != nil {
-		return fmt.Errorf("assigning tickets to tracker version: %w", err)
+		return r.printError(fmt.Errorf("assigning tickets to tracker version: %w", err))
 	}
 	r.log.Info("tickets assigned", map[string]any{"count": len(assignRefs), "version": r.nextVersion.String()})
 	return nil
@@ -840,7 +853,7 @@ func (r *releaseRunner) updateChangelog() error {
 	}
 
 	if err := versioning.PrependChangelog(changelogPath, entry); err != nil {
-		return fmt.Errorf("updating changelog: %w", err)
+		return r.printError(fmt.Errorf("updating changelog: %w", err))
 	}
 	r.changedFiles = append(r.changedFiles, changelogPath)
 	r.log.Info("changelog updated", map[string]any{"path": changelogPath, "version": r.nextVersion.String()})
@@ -895,7 +908,7 @@ func (r *releaseRunner) substitutePlaceholders() error {
 		}
 
 		if err := versioning.ReplaceInFile(path, r.currentVersion); err != nil {
-			return fmt.Errorf("substituting placeholders in %s: %w", rel, err)
+			return r.printError(fmt.Errorf("substituting placeholders in %s: %w", rel, err))
 		}
 		r.changedFiles = append(r.changedFiles, path)
 		return nil
@@ -930,7 +943,7 @@ func (r *releaseRunner) updateManifestVersion() error {
 
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return fmt.Errorf("reading %s: %w", name, err)
+			return r.printError(fmt.Errorf("reading %s: %w", name, err))
 		}
 
 		var manifest map[string]json.RawMessage
@@ -944,14 +957,14 @@ func (r *releaseRunner) updateManifestVersion() error {
 
 		versionJSON, err := json.Marshal(r.nextVersion.String())
 		if err != nil {
-			return fmt.Errorf("marshalling version: %w", err)
+			return r.printError(fmt.Errorf("marshalling version: %w", err))
 		}
 		manifest["version"] = versionJSON
 
 		indent := detectIndent(data)
 		updated, err := json.MarshalIndent(manifest, "", indent)
 		if err != nil {
-			return fmt.Errorf("marshalling %s: %w", name, err)
+			return r.printError(fmt.Errorf("marshalling %s: %w", name, err))
 		}
 		updated = append(updated, '\n')
 
@@ -962,7 +975,7 @@ func (r *releaseRunner) updateManifestVersion() error {
 		}
 
 		if err := os.WriteFile(path, updated, mode); err != nil {
-			return fmt.Errorf("writing %s: %w", name, err)
+			return r.printError(fmt.Errorf("writing %s: %w", name, err))
 		}
 		r.changedFiles = append(r.changedFiles, path)
 	}
@@ -1019,7 +1032,7 @@ func (r *releaseRunner) runTasks(label string, tasks []config.TaskRef) error {
 			for i, k := range config.SupportedProjectTypes {
 				supported[i] = string(k)
 			}
-			return fmt.Errorf("cannot run %s task %q: no project type detected\nhint: set \"projectType\" in releasar.json (supported values: %s)", label, script, strings.Join(supported, ", "))
+			return r.printError(fmt.Errorf("cannot run %s task %q: no project type detected\nhint: set \"projectType\" in releasar.json (supported values: %s)", label, script, strings.Join(supported, ", ")))
 		}
 
 		if !r.quiet {
@@ -1034,7 +1047,7 @@ func (r *releaseRunner) runTasks(label string, tasks []config.TaskRef) error {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("%s task %q failed: %w", label, script, err)
+			return r.printError(fmt.Errorf("%s task %q failed: %w", label, script, err))
 		}
 	}
 	return nil
@@ -1063,13 +1076,13 @@ func (r *releaseRunner) reviewGate() error {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("release cancelled at review gate")
+		return r.printError(fmt.Errorf("release cancelled at review gate"))
 	}
 	r.log.Info("review gate passed by user")
 
 	if len(r.changedFiles) > 0 {
 		if err := r.git.Add(r.changedFiles...); err != nil {
-			return fmt.Errorf("re-staging files after review: %w", err)
+			return r.printError(fmt.Errorf("re-staging files after review: %w", err))
 		}
 	}
 	return nil
@@ -1096,10 +1109,10 @@ func (r *releaseRunner) commitRelease() error {
 	}
 
 	if err := r.git.Add(r.changedFiles...); err != nil {
-		return fmt.Errorf("staging release files: %w", err)
+		return r.printError(fmt.Errorf("staging release files: %w", err))
 	}
 	if err := r.git.Commit(message); err != nil {
-		return fmt.Errorf("committing release changes: %w", err)
+		return r.printError(fmt.Errorf("committing release changes: %w", err))
 	}
 	r.log.Info("release committed", map[string]any{"subject": subject})
 	return nil
@@ -1117,7 +1130,7 @@ func (r *releaseRunner) tagRelease() error {
 	}
 
 	if err := r.git.Tag(r.nextVersion.String(), "Release "+r.tag); err != nil {
-		return fmt.Errorf("creating tag %s: %w", r.tag, err)
+		return r.printError(fmt.Errorf("creating tag %s: %w", r.tag, err))
 	}
 	r.tagCreated = true
 	r.log.Info("release tagged", map[string]any{"tag": r.tag})
@@ -1136,7 +1149,7 @@ func (r *releaseRunner) mergeIntoMain() error {
 	}
 
 	if err := r.git.Switch(r.cfg.Git.DefaultBranch); err != nil {
-		return fmt.Errorf("switching to %s: %w", r.cfg.Git.DefaultBranch, err)
+		return r.printError(fmt.Errorf("switching to %s: %w", r.cfg.Git.DefaultBranch, err))
 	}
 
 	if r.singleBranch {
@@ -1148,7 +1161,7 @@ func (r *releaseRunner) mergeIntoMain() error {
 	}
 
 	if err := r.git.Merge(r.releaseBranch, "--squash"); err != nil {
-		return fmt.Errorf("squash-merging release into %s: %w", r.cfg.Git.DefaultBranch, err)
+		return r.printError(fmt.Errorf("squash-merging release into %s: %w", r.cfg.Git.DefaultBranch, err))
 	}
 
 	if err := r.verifySquashCommitFiles(); err != nil {
@@ -1158,7 +1171,7 @@ func (r *releaseRunner) mergeIntoMain() error {
 	subject := strings.ReplaceAll(r.cfg.Git.ReleaseCommitTemplate, "{{tag}}", r.tag)
 	message := subject + "\n\n" + r.coAuthorTrailers()
 	if err := r.git.Commit(message); err != nil {
-		return fmt.Errorf("committing squash merge into %s: %w", r.cfg.Git.DefaultBranch, err)
+		return r.printError(fmt.Errorf("committing squash merge into %s: %w", r.cfg.Git.DefaultBranch, err))
 	}
 	r.log.Info("merged into main", map[string]any{"target": r.cfg.Git.DefaultBranch})
 	return nil
@@ -1194,7 +1207,7 @@ func (r *releaseRunner) verifySquashCommitFiles() error {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("release cancelled: unexpected files in squash commit")
+		return r.printError(fmt.Errorf("release cancelled: unexpected files in squash commit"))
 	}
 	return nil
 }
@@ -1211,10 +1224,10 @@ func (r *releaseRunner) mergeIntoDev() error {
 	}
 
 	if err := r.git.Switch(r.cfg.Git.DevelopmentBranch); err != nil {
-		return fmt.Errorf("switching to %s: %w", r.cfg.Git.DevelopmentBranch, err)
+		return r.printError(fmt.Errorf("switching to %s: %w", r.cfg.Git.DevelopmentBranch, err))
 	}
 	if err := r.git.Merge(r.releaseBranch, "--no-ff", "--no-edit"); err != nil {
-		return fmt.Errorf("merging release branch into %s: %w", r.cfg.Git.DevelopmentBranch, err)
+		return r.printError(fmt.Errorf("merging release branch into %s: %w", r.cfg.Git.DevelopmentBranch, err))
 	}
 	r.log.Info("merged into dev", map[string]any{"target": r.cfg.Git.DevelopmentBranch})
 	return nil
@@ -1233,7 +1246,7 @@ func (r *releaseRunner) cleanupReleaseBranch() error {
 
 	// Move off the release branch (to default) before deleting it.
 	if err := r.git.Switch(r.cfg.Git.DefaultBranch); err != nil {
-		return fmt.Errorf("switching to %s before branch deletion: %w", r.cfg.Git.DefaultBranch, err)
+		return r.printError(fmt.Errorf("switching to %s before branch deletion: %w", r.cfg.Git.DefaultBranch, err))
 	}
 	if err := r.git.DeleteBranch(r.releaseBranch); err != nil {
 		if !r.quiet {
@@ -1299,11 +1312,11 @@ func (r *releaseRunner) pushBranches() error {
 	}
 
 	if err := r.git.Push(remote, r.cfg.Git.DefaultBranch); err != nil {
-		return fmt.Errorf("pushing %s: %w", r.cfg.Git.DefaultBranch, err)
+		return r.printError(fmt.Errorf("pushing %s: %w", r.cfg.Git.DefaultBranch, err))
 	}
 	if !r.singleBranch {
 		if err := r.git.Push(remote, r.cfg.Git.DevelopmentBranch); err != nil {
-			return fmt.Errorf("pushing %s: %w", r.cfg.Git.DevelopmentBranch, err)
+			return r.printError(fmt.Errorf("pushing %s: %w", r.cfg.Git.DevelopmentBranch, err))
 		}
 	}
 	r.log.Info("branches pushed", map[string]any{"remote": remote})
@@ -1324,7 +1337,7 @@ func (r *releaseRunner) pushTag() error {
 	}
 
 	if err := r.git.Push(remote, r.tag); err != nil {
-		return fmt.Errorf("pushing tag %s: %w", r.tag, err)
+		return r.printError(fmt.Errorf("pushing tag %s: %w", r.tag, err))
 	}
 	r.log.Info("tag pushed", map[string]any{"remote": remote, "tag": r.tag})
 
@@ -1407,7 +1420,7 @@ func (r *releaseRunner) trackerCloseVersion() error {
 	}
 
 	if err := r.trackerProvider.CloseVersion(r.trackerVersionID); err != nil {
-		return fmt.Errorf("closing tracker version: %w", err)
+		return r.printError(fmt.Errorf("closing tracker version: %w", err))
 	}
 	r.log.Info("tracker version closed", map[string]any{"id": r.trackerVersionID, "version": r.nextVersion.String()})
 	return nil
@@ -1444,7 +1457,7 @@ func (r *releaseRunner) scmCreateRelease() error {
 
 	releaseURL, err := r.scmProvider.CreateRelease(r.tag, r.tag, body)
 	if err != nil {
-		return fmt.Errorf("creating SCM release: %w", err)
+		return r.printError(fmt.Errorf("creating SCM release: %w", err))
 	}
 	r.scmReleaseURL = releaseURL
 	r.log.Info("SCM release created", map[string]any{"provider": r.cfg.SCM.Provider, "url": releaseURL})
@@ -1489,10 +1502,10 @@ func (r *releaseRunner) printSummary() {
 	if r.singleBranch {
 		mode = "single-branch"
 	}
-	fmt.Println(ui.Success(fmt.Sprintf(
+	r.printSuccess(fmt.Sprintf(
 		"Released %s  [%s]\nTag: %s | Branch: %s",
 		r.nextVersion.String(), mode, r.tag, r.cfg.Git.DefaultBranch,
-	)))
+	))
 }
 
 // coAuthorTrailers builds a block of Co-authored-by: trailer lines from the
@@ -1521,24 +1534,24 @@ func (r *releaseRunner) rollback() {
 	if r.mainHeadSHA != "" {
 		_ = r.git.Switch(r.cfg.Git.DefaultBranch)
 		if err := r.git.Reset(r.mainHeadSHA, "--hard"); err == nil {
-			fmt.Printf("  ✓ %s reset to %s\n", r.cfg.Git.DefaultBranch, r.mainHeadSHA[:8])
+			r.printSuccess(fmt.Sprintf("%s reset to %s\n", r.cfg.Git.DefaultBranch, r.mainHeadSHA[:8]))
 		}
 	}
 	if !r.singleBranch && r.devHeadSHA != "" {
 		_ = r.git.Switch(r.cfg.Git.DevelopmentBranch)
 		if err := r.git.Reset(r.devHeadSHA, "--hard"); err == nil {
-			fmt.Printf("  ✓ %s reset to %s\n", r.cfg.Git.DevelopmentBranch, r.devHeadSHA[:8])
+			r.printSuccess(fmt.Sprintf("%s reset to %s\n", r.cfg.Git.DevelopmentBranch, r.devHeadSHA[:8]))
 		}
 	}
 	if r.releaseBranchCreated {
 		_ = r.git.Switch(r.cfg.Git.DefaultBranch)
 		if err := r.git.DeleteBranch(r.releaseBranch); err == nil {
-			fmt.Printf("  ✓ branch %s deleted\n", r.releaseBranch)
+			r.printSuccess(fmt.Sprintf("branch %s deleted\n", r.releaseBranch))
 		}
 	}
 	if r.tagCreated {
 		if err := r.git.DeleteTag(r.nextVersion.String()); err == nil {
-			fmt.Printf("  ✓ local tag %s deleted\n", r.tag)
+			r.printSuccess(fmt.Sprintf("local tag %s deleted\n", r.tag))
 		} else {
 			fmt.Println(ui.Caution(fmt.Sprintf(
 				"Could not delete local tag %s — delete it manually before retrying:\n  git tag -d %s\n  git push <remote> :refs/tags/%s",
