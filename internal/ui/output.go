@@ -11,6 +11,7 @@ var (
 	outputMarker        = lipgloss.NewStyle().Foreground(lipgloss.Color("#3B82F6")).Bold(true).Render("→")
 	outputMarkerSuccess = lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E")).Bold(true).Render("✓")
 	outputMarkerFailure = lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Bold(true).Render("✗")
+	outputMarkerSkipped = lipgloss.NewStyle().Foreground(lipgloss.Color("#8B5CF6")).Bold(true).Render("⊘")
 	outputDesc          = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280"))
 )
 
@@ -18,34 +19,58 @@ var (
 // rendered as an indented, subdued line below the title; newlines within a
 // description element are split and each sub-line is indented individually.
 func Print(title string, description ...string) {
-	fmt.Println(outputMarker + " " + title)
-	for _, d := range description {
-		for _, line := range strings.Split(d, "\n") {
-			fmt.Println(outputDesc.Render("  " + line))
-		}
-	}
+	fmt.Println(Sprint(title, description...))
 }
 
 // PrintSuccess outputs a titled output block prefixed with a checkmark icon to stdout.
 // Each description element is rendered as an indented, subdued line below the title;
 // newlines within a description element are split and each sub-line is indented individually.
 func PrintSuccess(title string, description ...string) {
-	fmt.Println(outputMarkerSuccess + " " + title)
-	for _, d := range description {
-		for _, line := range strings.Split(d, "\n") {
-			fmt.Println(outputDesc.Render("  " + line))
-		}
-	}
+	fmt.Println(SprintSuccess(title, description...))
 }
 
 // PrintFailure outputs a titled output block prefixed with a times icon to stdout.
 // Each description element is rendered as an indented, subdued line below the title;
 // newlines within a description element are split and each sub-line is indented individually.
 func PrintFailure(title string, description ...string) {
-	fmt.Println(outputMarkerFailure + " " + title)
+	fmt.Println(SprintFailure(title, description...))
+}
+
+// PrintSkipped outputs a titled output block prefixed with a skipped icon to stdout.
+// Each description element is rendered as an indented, subdued line below the title;
+// newlines within a description element are split and each sub-line is indented individually.
+func PrintSkipped(title string, description ...string) {
+	fmt.Println(SprintSkipped(title, description...))
+}
+
+// Sprint renders a titled output block as a string without printing it.
+func Sprint(title string, description ...string) string {
+	return sprintBlock(outputMarker, title, description)
+}
+
+// SprintSuccess renders a checkmark-prefixed output block as a string without printing it.
+func SprintSuccess(title string, description ...string) string {
+	return sprintBlock(outputMarkerSuccess, title, description)
+}
+
+// SprintFailure renders a times-prefixed output block as a string without printing it.
+func SprintFailure(title string, description ...string) string {
+	return sprintBlock(outputMarkerFailure, title, description)
+}
+
+// SprintSkipped renders a skipped-prefixed output block as a string without printing it.
+func SprintSkipped(title string, description ...string) string {
+	return sprintBlock(outputMarkerSkipped, title, description)
+}
+
+func sprintBlock(marker, title string, description []string) string {
+	var sb strings.Builder
+	sb.WriteString(marker + " " + title)
 	for _, d := range description {
-		for _, line := range strings.Split(d, "\n") {
-			fmt.Println(outputDesc.Render("  " + line))
+		for line := range strings.SplitSeq(d, "\n") {
+			sb.WriteByte('\n')
+			sb.WriteString(outputDesc.Render("  " + line))
 		}
 	}
+	return sb.String()
 }
