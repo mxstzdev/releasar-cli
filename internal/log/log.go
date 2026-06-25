@@ -39,19 +39,48 @@ type Channel struct {
 	logger zerolog.Logger
 }
 
-var manager = newManager(Config{})
+// bufferedWriter accumulates log entries in memory and mirrors each one to
+// stderr immediately so output is visible before the real file is opened.
+// Entries are replayed into the configured file writer when Init is called.
+type bufferedWriter struct {
+	mu      sync.Mutex
+	entries [][]byte
+}
 
-// Prepares the writer for a zerlog logger instance
-func makeFileWriter(cfg Config) (io.Writer, error) {
+func (b *bufferedWriter) Write(p []byte) (int, error) {
+	entry := make([]byte, len(p))
+	copy(entry, p)
+	b.mu.Lock()
+	b.entries = append(b.entries, entry)
+	b.mu.Unlock()
+	return os.Stderr.Write(p)
+}
+
+func (b *bufferedWriter) replay(w io.Writer) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, e := range b.entries {
+		_, _ = w.Write(e)
+	}
+}
+
+var (
+	pending = &bufferedWriter{}
+	manager = newManager(Config{}, pending)
+)
+
+// makeFileBackend opens (or configures) the log file backend without wrapping
+// it in a stderr mirror — callers compose the final writer themselves.
+func makeFileBackend(cfg Config) (io.Writer, error) {
 	path := filepath.Join(cfg.Directory, cfg.Filename)
 
 	if cfg.Rotating == nil || *cfg.Rotating {
-		return io.MultiWriter(os.Stderr, &lumberjack.Logger{
+		return &lumberjack.Logger{
 			Filename:   path,
 			MaxSize:    100,
 			MaxAge:     30,
 			MaxBackups: max(cfg.MaxBackups, 7),
-		}), nil
+		}, nil
 	}
 
 	if err := os.MkdirAll(cfg.Directory, 0755); err != nil {
@@ -63,31 +92,22 @@ func makeFileWriter(cfg Config) (io.Writer, error) {
 		return nil, fmt.Errorf("opening log file: %w", err)
 	}
 
-	return io.MultiWriter(os.Stderr, f), nil
+	return f, nil
 }
 
-func newManager(cfg Config) *Manager {
+func newManager(cfg Config, w io.Writer) *Manager {
 	level := zerolog.InfoLevel
-
 	if cfg.Level != nil {
 		level = *cfg.Level
 	}
-
 	if cfg.DefaultChannelName == "" {
 		cfg.DefaultChannelName = "general"
 	}
-
 	if cfg.Directory == "" {
 		cfg.Directory = "var/log/releasar"
 	}
-
 	if cfg.Filename == "" {
 		cfg.Filename = "releasar.log"
-	}
-
-	w, err := makeFileWriter(cfg)
-	if err != nil {
-		w = os.Stderr
 	}
 
 	return &Manager{
@@ -98,9 +118,25 @@ func newManager(cfg Config) *Manager {
 	}
 }
 
-// Init replaces the manager.
+// Init configures the global logger with the provided settings. Any entries
+// logged before Init is called are replayed into the configured file so no
+// early events are lost. Init is safe to call at most once per process run.
 func Init(cfg Config) {
-	manager = newManager(cfg)
+	fileBackend, err := makeFileBackend(cfg)
+	if err != nil {
+		// No file available — early stderr entries are already visible; just
+		// switch to a stderr-only manager going forward.
+		pending = nil
+		manager = newManager(cfg, os.Stderr)
+		return
+	}
+
+	if pending != nil {
+		pending.replay(fileBackend)
+		pending = nil
+	}
+
+	manager = newManager(cfg, io.MultiWriter(os.Stderr, fileBackend))
 }
 
 // Nop returns a Channel that silently discards all log output at zero allocation cost.
