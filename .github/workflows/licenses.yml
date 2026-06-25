@@ -32,16 +32,5 @@ jobs:
 
       - name: Verify LICENSES file is up to date
         run: |
-          go-licenses save ./... --ignore github.com/mxstzdev/releasar-cli --save_path=.licenses/ --force 2>/dev/null
-          {
-            find .licenses/ -type f | LC_ALL=C sort | while read f; do
-              echo "================================================================================"
-              echo "$(basename $(dirname $f))/$(basename $f)"
-              echo "================================================================================"
-              cat "$f"
-              echo ""
-            done
-          } > LICENSES.new
-          rm -rf .licenses/
-          diff LICENSES LICENSES.new || (echo "LICENSES file is out of date. Run 'make licenses' and commit the result." && exit 1)
-          rm LICENSES.new
+          bash bin/update-licenses.sh
+          git diff --quiet LICENSES || (echo "LICENSES file is out of date. Run 'make licenses' and commit the result." && exit 1)

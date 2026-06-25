@@ -8,7 +8,7 @@ STORAGE := storage
         build-linux-amd64 build-linux-arm64 \
         build-windows-amd64 build-windows-arm64 \
         build-macos build-linux build-windows \
-        licenses license-check
+        licenses-update license-check
 
 build:
 	$(GO) build -o $(BINARY) .
@@ -54,20 +54,9 @@ clean:
 	rm -rf $(DIST)
 	rm -rf $(STORAGE)
 
-# Requires: go install github.com/google/go-licenses@latest
-licenses:
-	@go-licenses save ./... --ignore github.com/mxstzdev/releasar-cli --save_path=.licenses/ --force 2>/dev/null
-	@{ \
-	  find .licenses/ -type f | LC_ALL=C sort | while read f; do \
-	    echo "================================================================================"; \
-	    echo "$$(basename $$(dirname $$f))/$$(basename $$f)"; \
-	    echo "================================================================================"; \
-	    cat "$$f"; \
-	    echo ""; \
-	  done; \
-	} > LICENSES
-	@rm -rf .licenses/
-	@echo "LICENSES file updated."
+licenses-update:
+	@bash bin/update-licenses.sh
 
+# Requires: go install github.com/google/go-licenses@latest
 license-check:
 	go-licenses check ./... --ignore github.com/mxstzdev/releasar-cli --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MPL-2.0,CC0-1.0

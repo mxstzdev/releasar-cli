@@ -23,11 +23,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Install go-licenses
-        run: go install github.com/google/go-licenses@latest
-
       - name: Regenerate LICENSES file
-        run: make licenses
+        run: make licenses-update
 
       - name: Commit if changed
         run: |
