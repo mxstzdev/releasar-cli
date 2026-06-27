@@ -19,20 +19,24 @@ import (
 //
 // Missing files are silently skipped. Unreadable files return an error.
 // Warns to stderr if a loaded .env file is not listed in the nearest .gitignore.
-func LoadDotEnv(repoRoot, workingDir string, extraFiles ...string) error {
+func LoadDotEnv(repoRoot, workingDir string, extraFiles ...string) ([]string, error) {
 	candidates := []string{repoRoot + "/.env"}
 	if workingDir != repoRoot {
 		candidates = append(candidates, workingDir+"/.env")
 	}
 	candidates = append(candidates, extraFiles...)
 
+	var loaded []string
 	for _, path := range candidates {
 		if err := loadDotEnvFile(path); err != nil {
-			return err
+			return nil, err
 		}
-		warnIfNotGitignored(path)
+		if _, err := os.Stat(path); err == nil {
+			loaded = append(loaded, path)
+			warnIfNotGitignored(path)
+		}
 	}
-	return nil
+	return loaded, nil
 }
 
 // loadDotEnvFile loads a single .env file into the process environment.
