@@ -182,6 +182,16 @@ func (c *Client) repositoryDefaultBranch() (string, error) {
 	return "", fmt.Errorf("could not determine default branch")
 }
 
+// RootDirectory returns the repository root directory detected during initialization.
+func (c *Client) RootDirectory() string {
+	return c.rootDirectory
+}
+
+// Configure updates the client's branch and tag-prefix config after construction.
+func (c *Client) Configure(cfg Config) {
+	c.cfg = cfg
+}
+
 func (c *Client) Pull(remote, ref string) error {
 	_, err := c.exec("pull", remote, ref)
 	if err != nil {
