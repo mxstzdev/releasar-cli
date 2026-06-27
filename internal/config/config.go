@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/rs/zerolog"
 )
 
 // ProjectTypeKind identifies the primary language and toolchain of the project.
@@ -62,35 +64,39 @@ type Config struct {
 	SourceFile          string          // absolute path of the file that was loaded
 	DetectedProjectType ProjectTypeKind // inferred from manifest presence in the working directory
 
-	Git        GitConfig
-	Versioning VersioningConfig
-	SCM        SCMConfig
+	Git            GitConfig
+	Versioning     VersioningConfig
+	SCM            SCMConfig
 	PackageManager PackageManagerConfig
-	Tracker    TrackerConfig
-	Changelog  ChangelogConfig
-	Tasks      TasksConfig
-	Hooks      HooksConfig
-	Notify     NotifyConfig
-	Log        LogConfig
+	Tracker        TrackerConfig
+	Changelog      ChangelogConfig
+	Tasks          TasksConfig
+	Hooks          HooksConfig
+	Notify         NotifyConfig
+	Log            LogConfig
 }
 
 // LogConfig controls where log files are written.
 type LogConfig struct {
-	Directory string // directory for log files; default: "var/log/releasar"
-	Filename  string // log file name; default: "releasar.log"
+	Level              zerolog.Level // log level; default: info
+	Directory          string        // location of the log directory; default: "var/log/releasar"
+	Filename           string        // name of the log file; default: "releasar.log"
+	Rotating           bool          // rotates log files every day; default: true
+	MaxBackups         int           // number of old files to keep; default: 7
+	DefaultChannelName string        // name of the default channel; default: "general"
 }
 
 type GitConfig struct {
-	DefaultBranch          string
-	DevelopmentBranch      string
-	TagPrefix              string
-	Remote                 string
-	ReleaseCommitTemplate  string // vars: {{package}}, {{version}}, {{tag}}
-	ReleaseBranchTemplate  string // vars: {{version}}, {{tag}}; empty = use built-in heuristic
+	DefaultBranch         string
+	DevelopmentBranch     string
+	TagPrefix             string
+	Remote                string
+	ReleaseCommitTemplate string // vars: {{package}}, {{version}}, {{tag}}
+	ReleaseBranchTemplate string // vars: {{version}}, {{tag}}; empty = use built-in heuristic
 }
 
 type VersioningConfig struct {
-	Scheme            string   // "semver" | "calver"
+	Scheme             string   // "semver" | "calver"
 	PlaceholderExclude []string // glob patterns relative to workingDir; matched files are skipped during placeholder substitution
 }
 
@@ -161,7 +167,10 @@ func Load(workingDir string) (*Config, error) {
 	if raw.ProjectType != "" {
 		detected = ProjectTypeKind(raw.ProjectType)
 	}
-	cfg := applyDefaults(raw)
+	cfg, err := applyDefaults(raw)
+	if err != nil {
+		return nil, err
+	}
 	cfg.SourceFile = sourceFile
 	cfg.DetectedProjectType = detected
 
@@ -205,7 +214,10 @@ func LoadLayered(rootDir, workingDir string) (*Config, error) {
 	if merged.ProjectType != "" {
 		detected = ProjectTypeKind(merged.ProjectType)
 	}
-	cfg := applyDefaults(merged)
+	cfg, err := applyDefaults(merged)
+	if err != nil {
+		return nil, err
+	}
 	cfg.SourceFile = sourceFile
 	cfg.DetectedProjectType = detected
 
@@ -241,7 +253,10 @@ func LoadFile(path, workingDir string) (*Config, error) {
 	if raw.ProjectType != "" {
 		detected = ProjectTypeKind(raw.ProjectType)
 	}
-	cfg := applyDefaults(&raw)
+	cfg, err := applyDefaults(&raw)
+	if err != nil {
+		return nil, fmt.Errorf("applying defaults: %w", err)
+	}
 	cfg.SourceFile = path
 	cfg.DetectedProjectType = detected
 	if err := validateTokens(&cfg); err != nil {
@@ -347,7 +362,7 @@ func detectProjectType(workingDir string) ProjectTypeKind {
 }
 
 // applyDefaults fills in zero-value fields with sensible defaults.
-func applyDefaults(raw *rawConfig) Config {
+func applyDefaults(raw *rawConfig) (Config, error) {
 	cfg := Config{}
 
 	// Git
@@ -393,8 +408,20 @@ func applyDefaults(raw *rawConfig) Config {
 	cfg.Hooks.AfterRelease = raw.Hooks.AfterRelease
 
 	// Log
+	if raw.Log.Level != "" {
+		lvl, err := zerolog.ParseLevel(raw.Log.Level)
+		if err != nil {
+			return Config{}, fmt.Errorf("invalid log level %q: %w", raw.Log.Level, err)
+		}
+		cfg.Log.Level = lvl
+	} else {
+		cfg.Log.Level = zerolog.InfoLevel
+	}
 	cfg.Log.Directory = stringOr(raw.Log.Directory, "var/log/releasar")
 	cfg.Log.Filename = stringOr(raw.Log.Filename, "releasar.log")
+	cfg.Log.Rotating = boolOr(raw.Log.Rotating, true)
+	cfg.Log.MaxBackups = intOr(raw.Log.MaxBackups, 7)
+	cfg.Log.DefaultChannelName = stringOr(raw.Log.DefaultChannelName, "general")
 
 	// Notify
 	if raw.Notify.Email != nil {
@@ -430,7 +457,7 @@ func applyDefaults(raw *rawConfig) Config {
 		}
 	}
 
-	return cfg
+	return cfg, nil
 }
 
 func defaultTrackerTokenEnv(provider string) string {
@@ -645,6 +672,13 @@ func boolOr(b *bool, fallback bool) bool {
 	return fallback
 }
 
+func intOr(n *int, fallback int) int {
+	if n != nil {
+		return *n
+	}
+	return fallback
+}
+
 // --- raw deserialization types ---
 
 type rawConfig struct {
@@ -654,11 +688,11 @@ type rawConfig struct {
 	SCM            rawSCMConfig            `json:"scm"`
 	PackageManager rawPackageManagerConfig `json:"pm"`
 	Tracker        rawTrackerConfig        `json:"tracker"`
-	Changelog  rawChangelogConfig  `json:"changelog"`
-	Tasks      rawTasksConfig      `json:"tasks"`
-	Hooks      rawHooksConfig      `json:"hooks"`
-	Notify     rawNotifyConfig     `json:"notify"`
-	Log        rawLogConfig        `json:"log"`
+	Changelog      rawChangelogConfig      `json:"changelog"`
+	Tasks          rawTasksConfig          `json:"tasks"`
+	Hooks          rawHooksConfig          `json:"hooks"`
+	Notify         rawNotifyConfig         `json:"notify"`
+	Log            rawLogConfig            `json:"log"`
 }
 
 type rawTrackerConfig struct {
@@ -712,6 +746,10 @@ type rawHooksConfig struct {
 }
 
 type rawLogConfig struct {
-	Directory string `json:"directory"`
-	Filename  string `json:"filename"`
+	Level              string `json:"level"`
+	Directory          string `json:"directory"`
+	Filename           string `json:"filename"`
+	Rotating           *bool  `json:"rotating"`
+	MaxBackups         *int   `json:"maxBackups"`
+	DefaultChannelName string `json:"defaultChannelName"`
 }
