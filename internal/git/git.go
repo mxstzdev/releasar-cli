@@ -93,7 +93,7 @@ func (c *Client) exec(command string, args ...string) (string, error) {
 	out, err := cmd.Output()
 
 	if err != nil {
-		c.log.Error("Git command failed", map[string]any{
+		c.log.Error("command failed", map[string]any{
 			"command": "git " + command + " " + strings.Join(args, " "),
 			"error":   err,
 		})
@@ -107,7 +107,7 @@ func (c *Client) exec(command string, args ...string) (string, error) {
 		return "", fmt.Errorf("git %s: %w", command, err)
 	}
 
-	c.log.Debug("Git command executed", map[string]any{
+	c.log.Debug("command executed", map[string]any{
 		"command": "git " + command + " " + strings.Join(args, " "),
 	})
 
