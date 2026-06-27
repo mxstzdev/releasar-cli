@@ -39,9 +39,8 @@ type Channel struct {
 	logger zerolog.Logger
 }
 
-// bufferedWriter accumulates log entries in memory and mirrors each one to
-// stderr immediately so output is visible before the real file is opened.
-// Entries are replayed into the configured file writer when Init is called.
+// bufferedWriter accumulates log entries in memory before Init opens the log
+// file. Entries are replayed into the configured file writer when Init is called.
 type bufferedWriter struct {
 	mu      sync.Mutex
 	entries [][]byte
@@ -53,7 +52,7 @@ func (b *bufferedWriter) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	b.entries = append(b.entries, entry)
 	b.mu.Unlock()
-	return os.Stderr.Write(p)
+	return len(p), nil
 }
 
 func (b *bufferedWriter) replay(w io.Writer) {
@@ -69,8 +68,7 @@ var (
 	manager = newManager(Config{}, pending)
 )
 
-// makeFileBackend opens (or configures) the log file backend without wrapping
-// it in a stderr mirror — callers compose the final writer themselves.
+// makeFileBackend opens (or configures) the log file backend.
 func makeFileBackend(cfg Config) (io.Writer, error) {
 	path := filepath.Join(cfg.Directory, cfg.Filename)
 
@@ -113,7 +111,7 @@ func newManager(cfg Config, w io.Writer) *Manager {
 	return &Manager{
 		cfg:      cfg,
 		ctx:      make(map[string]any),
-		logger:   zerolog.New(w).Level(level).With().Timestamp().Logger(),
+		logger:   zerolog.New(w).Level(level),
 		channels: make(map[string]*Channel),
 	}
 }
@@ -124,10 +122,8 @@ func newManager(cfg Config, w io.Writer) *Manager {
 func Init(cfg Config) {
 	fileBackend, err := makeFileBackend(cfg)
 	if err != nil {
-		// No file available — early stderr entries are already visible; just
-		// switch to a stderr-only manager going forward.
 		pending = nil
-		manager = newManager(cfg, os.Stderr)
+		manager = newManager(cfg, io.Discard)
 		return
 	}
 
@@ -136,7 +132,7 @@ func Init(cfg Config) {
 		pending = nil
 	}
 
-	manager = newManager(cfg, io.MultiWriter(os.Stderr, fileBackend))
+	manager = newManager(cfg, fileBackend)
 }
 
 // Nop returns a Channel that silently discards all log output at zero allocation cost.
@@ -277,10 +273,14 @@ func (c *Channel) log(e *zerolog.Event, msg string, ctx []map[string]any) {
 		maps.Copy(merged, m)
 	}
 
+	// Field order: level → channel → message → context → time.
+	// Send() calls Msg("") which skips the message key, so writing it here
+	// with Str avoids a duplicate while keeping the desired position.
+	e = e.Str(zerolog.MessageFieldName, msg)
 	if len(merged) > 0 {
 		e = e.Interface("context", merged)
 	}
-	e.Msg(msg)
+	e.Timestamp().Send()
 }
 
 func (c *Channel) Trace(msg string, ctx ...map[string]any) { c.log(c.logger.Trace(), msg, ctx) }
