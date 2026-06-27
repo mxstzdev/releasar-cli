@@ -231,6 +231,9 @@ func (m *Manager) Warn(msg string, ctx ...map[string]any)  { m.Channel().Warn(ms
 func (m *Manager) Error(msg string, ctx ...map[string]any) { m.Channel().Error(msg, ctx...) }
 func (m *Manager) Fatal(msg string, ctx ...map[string]any) { m.Channel().Fatal(msg, ctx...) }
 
+// ShareContext injects fields into every future log entry across all channels.
+func ShareContext(fields map[string]any) { manager.ShareContext(fields) }
+
 // Logger returns the underlying zerolog.Logger for full API access.
 func (c *Channel) Logger() zerolog.Logger {
 	c.mu.Lock()
