@@ -13,6 +13,8 @@ var (
 	outputMarkerFailure = lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Bold(true).Render("✗")
 	outputMarkerSkipped = lipgloss.NewStyle().Foreground(lipgloss.Color("#8B5CF6")).Bold(true).Render("⊘")
 	outputDesc          = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280"))
+	styleHighlight      = lipgloss.NewStyle().Foreground(lipgloss.Color("#EAB308"))
+	styleMuted          = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280"))
 )
 
 // Print outputs a titled output block to stdout. Each description element is
@@ -61,6 +63,16 @@ func SprintFailure(title string, description ...string) string {
 // SprintSkipped renders a skipped-prefixed output block as a string without printing it.
 func SprintSkipped(title string, description ...string) string {
 	return sprintBlock(outputMarkerSkipped, title, description)
+}
+
+// Highlight renders text in a yellow accent color for emphasis within a line.
+func Highlight(text string) string {
+	return styleHighlight.Render(text)
+}
+
+// Mute renders text in a subdued gray color for de-emphasis within a line.
+func Mute(text string) string {
+	return styleMuted.Render(text)
 }
 
 func sprintBlock(marker, title string, description []string) string {
